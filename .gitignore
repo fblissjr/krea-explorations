@@ -164,7 +164,8 @@ cython_debug/
 
 
 # local artifacts (images, viz, data) — not for the repo
-data/
+# anchored to repo root so tracked dirs like docs/data/ are NOT caught
+/data/
 
 # internal-only docs
 internal/
