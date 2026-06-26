@@ -4,7 +4,7 @@ Last updated: 2026-06-26
 
 Basis: solo (keep-one) + leave-one-out (drop-one) sweeps on **one prompt** (portrait), seed 42,
 Krea2 **Turbo fp8**, 8 steps euler/simple, image-level **RGB-RMS** distance. Cross-style sweeps
-(anime, illustration) in progress to raise/lower these.
+(anime, illustration) are done — see the Cross-style update below.
 
 | # | Finding | Confidence | Why / caveat |
 |---|---------|-----------|--------------|
@@ -43,14 +43,14 @@ Mostly **expected**, and worth saying plainly:
 - redundancy across adjacent layers is normal.
 
 So the solo/LOO work is **verification + reproducible artifacts + the (mild) L14/structure observation** —
-not a discovery. The genuinely model-specific, non-obvious questions still open:
-1. **The combination mechanism** — how `txtfusion`'s attention mixes the 12 layers (the attention map);
-   not predictable from priors. This is what the model actually does.
-2. **Attribute-level** — *which* layers/directions carry the under-weighted benign attributes (expression,
-   "wet", demographics) the community reports. Layer-level solo/LOO is too coarse; needs difference-of-means
-   (#3) or an SAE.
-3. **Where the bias lives** — encoder frozen (bias in the DiT) or tuned (gradient across layers)? Testable
-   via an encoder-vs-stock-Qwen3-VL diff.
+not a discovery. The genuinely model-specific questions it raised — now **addressed** below:
+1. **The combination mechanism** — answered: the layer-fusion routes through an **L20 directional hub**
+   (see "Layer-fusion attention"). ✓
+2. **Attribute-level** — answered: benign attributes (expression / "wet" / blush) **survive the aggregation**,
+   and the projector/fusion is *not* where they're gated (see "Attributes vs the projector-rebalance lever"). ✓
+3. **Where the bias lives** — answered: the encoder is **frozen stock `Qwen/Qwen3-VL-4B-Instruct`** (Krea's
+   loading code does `from_pretrained` + `.eval().requires_grad_(False)`; its config is field-for-field
+   identical to stock), so all learned aggregation is **DiT-side**. ✓
 
 ## Layer-fusion attention — measured behavior (2026-06-26)
 
@@ -105,3 +105,10 @@ So for these benign attributes, presence doesn't hinge on the projector/fusion s
 behaves as a detail/intensity knob. Caveats: a few prompts/seeds, controls not magnitude-matched, benign
 attributes only (not near-safety-boundary cases), visual + correlational rather than a hard metric.
 Data in `data/attribute_directions/` (probe + causal + stock-vs-rebalanced grids).
+
+## In progress — projector-LoRA A/B (2026-06-26)
+
+The community hand-rebalances the projector; the trainers can *learn* it (diffusers + musubi target
+`text_fusion.projector` by default, ai-toolkit excludes it). Testing whether **training** the 12→1 layer-mix
+changes a LoRA's behavior: two identical Krea-2-Raw DreamBooth LoRAs (QLoRA, NF4) differing only in whether
+`text_fusion.projector` is a LoRA target, compared on held-out prompts. Result pending.
