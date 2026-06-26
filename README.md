@@ -67,6 +67,21 @@ aggregating multiple layers rather than using the last hidden state.
 Confidence is bounded by: probes done at a handful of prompts/seeds, an image-level distance metric for the
 leave-one-out ranking, and the attention maps covering the layer-fusion (pre-projector) blocks only.
 
+## Prior work
+
+Per-layer reweighting of Krea 2's conditioning was introduced by
+[`nova452/ComfyUI-ConditioningKrea2Rebalance`](https://github.com/nova452/ComfyUI-ConditioningKrea2Rebalance)
+and refined by [`huwhitememes/comfyui-krea2-conditioning`](https://github.com/huwhitememes/comfyui-krea2-conditioning),
+which documented that the **deeper layers carry fine detail and can end up under-represented**, and that a
+naive global multiplier inflates the conditioning magnitude (their fix: **RMS-renormalize** to hold
+magnitude). Those points — and the magnitude/direction reasoning above — are theirs; the "Confirmatory"
+findings overlap with that work.
+
+What's new here is **interpretability of the combination itself** — reading the model's internals rather
+than only scaling the conditioning tensor: the **L20 attention hub** and the **contrastive
+(mid-minus-deep) projector** (the "Model-specific" findings above), which require running the encoder +
+`txtfusion`, not just reshaping the conditioning.
+
 ## License
 
 This tooling is released by the author. The Krea 2 models it operates on are covered by the **Krea 2
