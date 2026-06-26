@@ -21,8 +21,19 @@ All notable changes to this project are documented here. Format follows
   the 12x12 layer-fusion attention maps (head-averaged, per-head, cross-prompt).
 
 ### Findings
-- Interpretability of the layer aggregation: a universal mid-layer attention hub (L20, cross-prompt and
-  cross-head) and a contrastive projector (positive on mid layers, negative on deep layers). See README.
+- Interpretability of the layer aggregation: a universal mid-layer attention hub (L20) and a contrastive
+  projector (positive on mid layers, negative on deep layers). See README / `docs/findings.md`.
+- L20 hub validated content-token-masked across 5 prompts (~91–95% of content tokens) — content-driven,
+  not a padding artifact — and shown to be a learned *directional* hub, not a magnitude sink.
+- Confirmed the text encoder is stock, frozen `Qwen/Qwen3-VL-4B-Instruct` (loading code + config identity);
+  all learned aggregation is DiT-side.
+- Difference-of-means probe: benign attributes (expression / wet / blush) survive the learned aggregation
+  *better* than ordinary content controls — i.e. the projector/fusion is not where such attributes are
+  suppressed.
+
+### Documentation
+- Published `docs/findings.md`, `docs/figures/` (attention maps), `docs/data/` (numeric arrays), and
+  `examples/test_prompts/` (reverse-caption prompts). Raw renders + internal notes stay local/gitignored.
 
 ## [0.1.0]
 

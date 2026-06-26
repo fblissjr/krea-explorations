@@ -58,14 +58,27 @@ aggregating multiple layers rather than using the last hidden state.
 
 **Model-specific (High confidence; not what you'd expect from a generic DiT).**
 - **L20 is a universal mid-layer attention hub.** In the layer-fusion attention, nearly every selected
-  layer attends to L20 — and this holds across photographic, anime, and illustration prompts and across most
-  attention heads.
+  layer attends to L20. Validated across **5 prompts** (photo / anime / illustration + two long dense
+  prompts) and, on the dense ones, **content-token-masked**: L20 is the top key-layer for **~91–95% of
+  content tokens** — so it's content-driven, not a padding/template artifact — and it holds across most
+  attention heads. The concentration is a **learned *directional* hub, not a magnitude sink**: L20's
+  hidden-state norm is mid-pack (rank 6/12) and its pre-norm key norm is among the *lowest* (rank 10/12),
+  and the block's `qknorm` equalizes every layer's key magnitude — so the routing is decided by learned
+  query/key *direction* (the trained `wq`/`wk` send most queries toward L20's key direction), not by
+  magnitude, and not by any hardcoded index (the layerwise blocks carry no positional encoding).
 - **The projector combines contrastively, not as an average.** Its learned weights are positive on the mid
   layers (peak at L14) and strongly negative on the deep layers (L23/29/32) — roughly "mid minus deep",
   applied to the attention-mixed slots.
 
 Confidence is bounded by: probes done at a handful of prompts/seeds, an image-level distance metric for the
 leave-one-out ranking, and the attention maps covering the layer-fusion (pre-projector) blocks only.
+
+## LLM System Prompt
+Here's the system prompt I'm testing with to generate from image to text:
+
+```
+Describe the image by detailing the color, shape, size, texture, quantity, text, and spatial relationships of the objects and the background. Write a single cohesive paragraph (no lists or markdown), as a dense text-to-image caption. Open by naming the actual medium/style (e.g. photograph, painting, illustration, 3D render — but identify what it truly is). Cover composition and framing, the main subject(s) and their attributes, and the lighting. Put any visible text in quotes, exactly. Be specific and grounded — describe only what is actually visible; do not invent details, intent, or backstory.
+```
 
 ## Prior work
 

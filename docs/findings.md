@@ -1,0 +1,86 @@
+# Findings TLDR — Krea2 selected-layer probes
+
+Last updated: 2026-06-26
+
+Basis: solo (keep-one) + leave-one-out (drop-one) sweeps on **one prompt** (portrait), seed 42,
+Krea2 **Turbo fp8**, 8 steps euler/simple, image-level **RGB-RMS** distance. Cross-style sweeps
+(anime, illustration) in progress to raise/lower these.
+
+| # | Finding | Confidence | Why / caveat |
+|---|---------|-----------|--------------|
+| 1 | **Deep selected layers carry the renderable content; shallow are scaffolding.** Solo L23/L26/L29/L32 each render a coherent portrait alone; L2–L11, L17, L20 alone → noise. | **High** (this prompt) / Medium (general) | Agrees with the learned projector (deep layers have the largest \|weights\|) and the tech report ("final layer optimized for next-token prediction, not image gen"). Generality pending cross-style. |
+| 2 | **L14 uniquely carries text/typography.** Solo L14 → text glyphs, despite a prompt with no text. | **Medium-High** | Striking, clean single-layer signal, but one prompt and the prompt had no text. Needs a text-containing prompt + cross-style to confirm. Most novel finding. |
+| 3 | **The final layer (L35) alone is unusable for image gen** (noise). | **High** | Directly confirms the tech report's rationale for multilayer aggregation. |
+| 4 | **Necessity ≠ sufficiency: deep layers are partly redundant.** Drop-one keeps everything coherent (11 layers remain). L29 most necessary (Δ=0.35), then L32 (0.25), L23 (0.20); **L26 is sufficient-alone but low drop-importance (0.15) → redundant.** | **Medium** | Ranking from a coarse RGB-RMS metric, one prompt/seed. Direction (deep > shallow) trustworthy; exact order (e.g. L29 vs L32) low confidence. |
+| 5 | **The model's learned aggregation agrees with the ablations.** Largest-\|weight\| layers (L23, L29, L32, L26) are the ones that render alone and/or matter most when dropped. | **Medium-High** | Two independent signals cross-check (learned projector vs causal ablation). |
+
+## Confidence summary
+
+- **High:** deep-carry-content / shallow-scaffold / final-layer-unusable — architecturally grounded + visually unambiguous.
+- **Medium:** L14 = text; redundancy among deep layers.
+- **Low:** exact importance ordering (coarse metric, n=1 prompt/seed).
+- **Pending:** cross-style generality (running); precise numbers (conditioning-space leave-one-out + gain-Jacobian via the `txtfusion` extractor, no generation needed).
+
+## Caveats bounding all of the above
+
+Single prompt, single seed, Turbo **fp8** (quantized), **image-level** RGB-RMS distance (not perceptual,
+not conditioning-space). These bound confidence; the extractor + cross-style sweeps are how we tighten it.
+
+## Cross-style update (2026-06-26)
+
+Ran solo + leave-one-out on **anime** and **illustration** too. The pattern **held across all 3 styles**:
+deep layers (L23/26/29/32) render alone, shallow = noise, and the leave-one-out ranking is consistent
+(L29 top everywhere; cluster {L29, L23, L32} then L26/L14; shallow lowest). L14 **refined**: it carries
+**structure/layout** (text glyphs in the portrait, road/scene structure in the illustration), not purely
+"text". Cross-style consistency moves findings 1 & 3 toward **High**.
+
+## Is any of this novel? (honest calibration)
+
+Mostly **expected**, and worth saying plainly:
+- "deep = semantic, shallow = lexical/scaffold" is standard LLM-layer interpretability.
+- "final layer unusable for image-gen" is *literally Krea's stated reason* for multilayer aggregation —
+  confirmatory, not a discovery.
+- redundancy across adjacent layers is normal.
+
+So the solo/LOO work is **verification + reproducible artifacts + the (mild) L14/structure observation** —
+not a discovery. The genuinely model-specific, non-obvious questions still open:
+1. **The combination mechanism** — how `txtfusion`'s attention mixes the 12 layers (the attention map);
+   not predictable from priors. This is what the model actually does.
+2. **Attribute-level** — *which* layers/directions carry the under-weighted benign attributes (expression,
+   "wet", demographics) the community reports. Layer-level solo/LOO is too coarse; needs difference-of-means
+   (#3) or an SAE.
+3. **Where the bias lives** — encoder frozen (bias in the DiT) or tuned (gradient across layers)? Testable
+   via an encoder-vs-stock-Qwen3-VL diff.
+
+## Layer-fusion attention — the first model-specific result (2026-06-26)
+
+Built the `txtfusion` extractor (CPU; loads the Krea2 CLIP for the 12 hidden states + the DiT's txtfusion
+weights, recomputes the layerwise attention).
+
+**What's documented vs measured (honest framing):** the *architecture* — cross-layer attention over the 12
+layers, then a `Linear(12→1)` projector — is public (diffusers' `transformer_krea2.py` docstring: "the
+layerwise_blocks attend across the num_text_layers axis"). We did **not** discover that. What's measured
+below is the *learned behavior* of that attention (which layer it concentrates on, the sign pattern of the
+learned projector) — emergent properties no source states. This is characterization of an open model, not
+an architecture reveal:
+
+1. **L20 is a universal attention hub.** In layerwise block 1, nearly every selected layer attends to L20;
+   column-strength L20 = **0.24 / 0.27 / 0.25** across portrait / anime / illustration (~2x the next, L23),
+   with a near-identical ranking. Cross-style consistent → **High confidence**, a prompt-independent
+   architectural property. Per-head: the hub is **broad** (most of the 20 heads route to L20), with a
+   minority specializing on L14 / L23-29 / L35 / L8.
+   - **Validated (2026-06-26):** also held on 2 long dense prompts (mushroom, geisha). **Content-token-masked**
+     (dropping the 34-token template prefix + suffix), L20 is the top key-layer for **91–95% of content
+     tokens** → content-driven, **not** a padding/template artifact. 5 prompts total now.
+   - **Mechanism: a learned *directional* hub, not a magnitude sink.** L20's hidden-state norm is mid-pack
+     (rank 6/12) and its raw (pre-norm) key norm is near-*lowest* (rank 10/12); the block's `qknorm`
+     equalizes every layer's key magnitude. So routing is decided by learned query/key **direction** (trained
+     `wq`/`wk` point most queries at L20's key direction), not magnitude — and not a hardcoded index (the
+     layerwise blocks have no positional encoding). Encoder hidden-state norm grows ~48x L2→L35 (11→555),
+     which may be *why* the projector down-weights deep layers.
+2. **The projector is contrastive, not an average.** Learned 12->1 weights are positive on mid layers
+   (L8-L20, peak L14 +0.71) and strongly negative on deep layers (L23 -1.44, L29 -0.89, L32 -0.61). Fixed
+   weights → prompt-independent. The final text vector ≈ "mid minus deep". **High confidence.**
+
+Caveat: the projector's signed weights act on the attention-**mixed** slots (post block 0/1), not raw
+layers; and this is the **layerwise** attention only (2 refiner blocks after the projector not yet mapped).
