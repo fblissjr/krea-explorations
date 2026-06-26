@@ -7,6 +7,9 @@ Small arrays backing the figures in `../figures/` and the findings in `../findin
 
 - `attn_block{0,1}_mean.npy` — 12×12 head+token-averaged layer-fusion attention (portrait), blocks 0/1.
 - `attn_{portrait,anime,illustration}_b{0,1}_mean.npy` — same, per style (cross-prompt consistency check).
+- `attn_{mushroom,geisha}_b{0,1}_mean.npy` — same, for the two long dense prompts (part of the 5-prompt validation).
+- `l20_validation.json` — L20-hub validation across all 5 prompts (short prompts: all-token block-1 column
+  strength; dense prompts: content-token-masked fraction of content tokens whose top key-layer is L20).
 - `attn_p{0,1,2}_b{0,1}_mean.npy` — per-prompt 12×12 means (the cross-prompt figure).
 - `projector_weights.npy` — the learned `txtfusion.projector` weights `[12]` (mid-positive / deep-negative).
 - `rel_shifts.npz` — attribute difference-of-means per-layer relative shifts (expression/wet/blush) + the

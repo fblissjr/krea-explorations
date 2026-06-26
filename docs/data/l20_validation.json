@@ -1,0 +1,45 @@
+{
+  "_layers": [
+    "L2",
+    "L5",
+    "L8",
+    "L11",
+    "L14",
+    "L17",
+    "L20",
+    "L23",
+    "L26",
+    "L29",
+    "L32",
+    "L35"
+  ],
+  "_note": "L20 hub validation. 3 short prompts: all-token block1 column strength (head+token mean). 2 dense prompts: content-token-masked (drop 34-tok template prefix + 5 suffix) \u2014 fraction of content tokens whose top key-layer is L20.",
+  "mushroom": {
+    "seq": 326,
+    "method": "content-token-masked",
+    "content_tokens": 287,
+    "frac_content_top_key_L20": 0.9164,
+    "L20_strength": 0.2879,
+    "next_layer_strength": 0.1513
+  },
+  "geisha": {
+    "seq": 370,
+    "method": "content-token-masked",
+    "content_tokens": 331,
+    "frac_content_top_key_L20": 0.9486,
+    "L20_strength": 0.2959,
+    "next_layer_strength": 0.1467
+  },
+  "portrait": {
+    "method": "all-token",
+    "L20_col_strength": 0.24
+  },
+  "anime": {
+    "method": "all-token",
+    "L20_col_strength": 0.2682
+  },
+  "illustration": {
+    "method": "all-token",
+    "L20_col_strength": 0.2505
+  }
+}
