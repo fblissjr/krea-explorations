@@ -50,14 +50,20 @@ it contributes.
 
 ## What we've found
 
+> Framing: the *architecture* (cross-layer attention over the 12 layers → `Linear(12→1)` projector →
+> refiners) is public — see Prior work. The items below **characterize the trained model's behavior**, read
+> off the open weights; they are not architecture we uncovered. Most are low-effort to reproduce (the
+> projector is 12 numbers in the checkpoint; the hub is one forward pass). The value is the
+> characterization + a few falsifications (below), not a hidden-structure reveal.
+
 **Confirmatory (expected from LLM-layer priors).** Isolating one selected layer at a time (and the
 complementary leave-one-out): the **deep** selected layers (L23/26/29/32) carry the renderable content and
 each can render a coherent image alone; **shallow** layers alone are noise; **L14** carries structure/layout;
 the **final layer (L35) alone is unusable for image generation** — consistent with Krea's stated reason for
 aggregating multiple layers rather than using the last hidden state.
 
-**Model-specific (High confidence; not what you'd expect from a generic DiT).**
-- **L20 is a universal mid-layer attention hub.** In the layer-fusion attention, nearly every selected
+**Measured (empirical; read off the open model, and — as far as we know — unpublished).**
+- **L20 acts as a mid-layer attention hub.** In the layer-fusion attention, nearly every selected
   layer attends to L20. Validated across **5 prompts** (photo / anime / illustration + two long dense
   prompts) and, on the dense ones, **content-token-masked**: L20 is the top key-layer for **~91–95% of
   content tokens** — so it's content-driven, not a padding/template artifact — and it holds across most
@@ -90,10 +96,12 @@ naive global multiplier inflates the conditioning magnitude (their fix: **RMS-re
 magnitude). Those points — and the magnitude/direction reasoning above — are theirs; the "Confirmatory"
 findings overlap with that work.
 
-What's new here is **interpretability of the combination itself** — reading the model's internals rather
-than only scaling the conditioning tensor: the **L20 attention hub** and the **contrastive
-(mid-minus-deep) projector** (the "Model-specific" findings above), which require running the encoder +
-`txtfusion`, not just reshaping the conditioning.
+What this adds is **characterization of the combination** — reading the model's internals rather than only
+scaling the conditioning tensor: the **L20 attention hub** and the **contrastive (mid-minus-deep)
+projector** (the "Measured" findings above), plus a few **falsifications** that are the more useful part —
+notably that the layer-fusion/projector is **not** where benign attributes get suppressed (they survive the
+aggregation *better* than ordinary content), so reweighting the projector to "unfilter" the model targets
+the wrong stage. None of this is hidden architecture; it's measurement of an open model.
 
 ## License
 

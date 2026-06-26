@@ -9,7 +9,7 @@ Krea2 **Turbo fp8**, 8 steps euler/simple, image-level **RGB-RMS** distance. Cro
 | # | Finding | Confidence | Why / caveat |
 |---|---------|-----------|--------------|
 | 1 | **Deep selected layers carry the renderable content; shallow are scaffolding.** Solo L23/L26/L29/L32 each render a coherent portrait alone; L2–L11, L17, L20 alone → noise. | **High** (this prompt) / Medium (general) | Agrees with the learned projector (deep layers have the largest \|weights\|) and the tech report ("final layer optimized for next-token prediction, not image gen"). Generality pending cross-style. |
-| 2 | **L14 uniquely carries text/typography.** Solo L14 → text glyphs, despite a prompt with no text. | **Medium-High** | Striking, clean single-layer signal, but one prompt and the prompt had no text. Needs a text-containing prompt + cross-style to confirm. Most novel finding. |
+| 2 | **L14 uniquely carries text/typography.** Solo L14 → text glyphs, despite a prompt with no text. | **Medium-High** | Striking, clean single-layer signal, but one prompt and the prompt had no text. Needs a text-containing prompt + cross-style to confirm. The most surprising solo probe, but modest. |
 | 3 | **The final layer (L35) alone is unusable for image gen** (noise). | **High** | Directly confirms the tech report's rationale for multilayer aggregation. |
 | 4 | **Necessity ≠ sufficiency: deep layers are partly redundant.** Drop-one keeps everything coherent (11 layers remain). L29 most necessary (Δ=0.35), then L32 (0.25), L23 (0.20); **L26 is sufficient-alone but low drop-importance (0.15) → redundant.** | **Medium** | Ranking from a coarse RGB-RMS metric, one prompt/seed. Direction (deep > shallow) trustworthy; exact order (e.g. L29 vs L32) low confidence. |
 | 5 | **The model's learned aggregation agrees with the ablations.** Largest-\|weight\| layers (L23, L29, L32, L26) are the ones that render alone and/or matter most when dropped. | **Medium-High** | Two independent signals cross-check (learned projector vs causal ablation). |
@@ -52,7 +52,7 @@ not a discovery. The genuinely model-specific, non-obvious questions still open:
 3. **Where the bias lives** — encoder frozen (bias in the DiT) or tuned (gradient across layers)? Testable
    via an encoder-vs-stock-Qwen3-VL diff.
 
-## Layer-fusion attention — the first model-specific result (2026-06-26)
+## Layer-fusion attention — measured behavior (2026-06-26)
 
 Built the `txtfusion` extractor (CPU; loads the Krea2 CLIP for the 12 hidden states + the DiT's txtfusion
 weights, recomputes the layerwise attention).
