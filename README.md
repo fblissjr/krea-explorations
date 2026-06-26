@@ -66,7 +66,7 @@ holds magnitude, so reweighting changes only the *direction* of the combined tex
 > refiners) is public — see Prior work. The items below **characterize the trained model's behavior**, read
 > off the open weights; they are not architecture we uncovered. Most are low-effort to reproduce (the
 > projector is 12 numbers in the checkpoint; the hub is one forward pass). The value is the characterization
-> plus a few falsifications, not a hidden-structure reveal. Full write-up with confidence levels in
+> plus a few measurements that clarify what the aggregation does, not a hidden-structure reveal. Full write-up with confidence levels in
 > [`docs/findings.md`](docs/findings.md); attention-map figures in `docs/figures/`, numeric arrays in
 > `docs/data/`.
 
@@ -90,10 +90,12 @@ aggregating multiple layers rather than using the last hidden state.
   layers (peak at L14) and strongly negative on the deep layers (L23/29/32) — roughly "mid minus deep",
   applied to the attention-mixed slots.
 
-**Falsifications (the more useful part).** The layer-fusion/projector is **not** where benign attributes get
-suppressed: a difference-of-means probe shows attributes the community reports as under-represented
-(expression, "wet", blush) survive the learned aggregation *better* than ordinary content controls. So
-reweighting the projector to "unfilter" the model **targets the wrong stage**.
+**What the projector-rebalance lever does.** Benign attributes (expression, "wet", blush) come through the
+learned aggregation and render whether or not the projector is rebalanced: a difference-of-means probe
+shows they survive *more* strongly than ordinary content controls, a with/without causal test renders them
+clearly, and a stock-vs-rebalanced test renders them either way. Boosting the deep layers (the rebalance
+lever) mainly shifts **detail, contrast, and intensity** — consistent with the deep layers carrying fine
+detail (see Prior work) — rather than changing whether an attribute appears.
 
 Confidence is bounded by: probes done at a handful of prompts/seeds, an image-level distance metric for the
 leave-one-out ranking, and the attention maps covering the layer-fusion (pre-projector) blocks only.
@@ -120,8 +122,8 @@ findings overlap with that work.
 
 What this adds is **characterization of the combination** — reading the model's internals rather than only
 scaling the conditioning tensor: the **L20 attention hub** and the **contrastive (mid-minus-deep) projector**
-(the "Measured" findings), plus the **falsification** above. None of this is hidden architecture; it's
-measurement of an open model.
+(the "Measured" findings), plus the attribute / rebalance-lever measurements above. None of this is hidden
+architecture; it's measurement of an open model.
 
 ## License
 

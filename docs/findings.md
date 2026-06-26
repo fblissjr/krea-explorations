@@ -84,3 +84,18 @@ an architecture reveal:
 
 Caveat: the projector's signed weights act on the attention-**mixed** slots (post block 0/1), not raw
 layers; and this is the **layerwise** attention only (2 refiner blocks after the projector not yet mapped).
+
+## Attributes vs the projector-rebalance lever (2026-06-26)
+
+Difference-of-means + causal tests on benign attributes (expression / "wet" / blush):
+- **Conditioning (net-effect through `txtfusion`):** these attributes come through the learned aggregation
+  *more* strongly than ordinary content controls (mean relative footprint 0.14 vs 0.04; A=out/in 1.2 vs 0.46).
+- **Causal (with/without in the prompt):** each attribute renders clearly on stock Turbo.
+- **Stock vs rebalanced (deep-boost projector LoRA, ×1 and ×4):** the attributes render either way. Boosting
+  the deep layers mainly shifts **detail / contrast / intensity** — consistent with the deep layers carrying
+  fine detail (see Prior work) — rather than changing whether an attribute appears.
+
+So for these benign attributes, presence doesn't hinge on the projector/fusion stage; the rebalance lever
+behaves as a detail/intensity knob. Caveats: a few prompts/seeds, controls not magnitude-matched, benign
+attributes only (not near-safety-boundary cases), visual + correlational rather than a hard metric.
+Data in `data/attribute_directions/` (probe + causal + stock-vs-rebalanced grids).

@@ -27,24 +27,29 @@ PRESETS = {"turbo": dict(steps=8, cfg=1.0), "raw": dict(steps=28, cfg=4.5)}
 
 def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=42,
                 width=1024, height=1024, sampler="euler", scheduler="simple",
-                base_shift=0.5, max_shift=1.15, filename_prefix="krea2_gen"):
-    """Build a ComfyUI API graph for a single Krea 2 txt2img with the flow shift applied."""
-    g = {
-        "ckpt": {"class_type": "UNETLoader",
-                 "inputs": {"unet_name": unet, "weight_dtype": "default"}},
-        "shift": {"class_type": "ModelSamplingFlux",
-                  "inputs": {"model": ["ckpt", 0], "max_shift": max_shift,
-                             "base_shift": base_shift, "width": width, "height": height}},
-        "clip": {"class_type": "CLIPLoader",
-                 "inputs": {"clip_name": clip, "type": "krea2", "device": "default"}},
-        "vae": {"class_type": "VAELoader", "inputs": {"vae_name": vae}},
-        "pos": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": prompt}},
-        "latent": {"class_type": "EmptyLatentImage",
-                   "inputs": {"width": width, "height": height, "batch_size": 1}},
-        "vaedec": {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": ["vae", 0]}},
-        "save": {"class_type": "SaveImage",
-                 "inputs": {"images": ["vaedec", 0], "filename_prefix": filename_prefix}},
-    }
+                base_shift=0.5, max_shift=1.15, lora=None, lora_strength=1.0,
+                filename_prefix="krea2_gen"):
+    """Build a ComfyUI API graph for a single Krea 2 txt2img with the flow shift applied.
+
+    Pass ``lora=<filename in the ComfyUI loras dir>`` (e.g. a projector ``.diff`` LoRA) to insert a
+    ``LoraLoaderModelOnly`` before the sampler — used for stock-vs-rebalanced comparisons.
+    """
+    g = {"ckpt": {"class_type": "UNETLoader",
+                  "inputs": {"unet_name": unet, "weight_dtype": "default"}}}
+    model_src = ["ckpt", 0]
+    if lora:
+        g["lora"] = {"class_type": "LoraLoaderModelOnly",
+                     "inputs": {"model": ["ckpt", 0], "lora_name": lora, "strength_model": lora_strength}}
+        model_src = ["lora", 0]
+    g["shift"] = {"class_type": "ModelSamplingFlux",
+                  "inputs": {"model": model_src, "max_shift": max_shift,
+                             "base_shift": base_shift, "width": width, "height": height}}
+    g["clip"] = {"class_type": "CLIPLoader",
+                 "inputs": {"clip_name": clip, "type": "krea2", "device": "default"}}
+    g["vae"] = {"class_type": "VAELoader", "inputs": {"vae_name": vae}}
+    g["pos"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": prompt}}
+    g["latent"] = {"class_type": "EmptyLatentImage",
+                   "inputs": {"width": width, "height": height, "batch_size": 1}}
     # Real negative conditioning when CFG is on; zeroed-out when CFG is off (Turbo).
     if cfg > 1.0:
         g["neg"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": negative}}
@@ -55,6 +60,9 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
                                "latent_image": ["latent", 0], "seed": seed, "steps": steps,
                                "cfg": cfg, "sampler_name": sampler, "scheduler": scheduler,
                                "denoise": 1.0}}
+    g["vaedec"] = {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": ["vae", 0]}}
+    g["save"] = {"class_type": "SaveImage",
+                 "inputs": {"images": ["vaedec", 0], "filename_prefix": filename_prefix}}
     return g
 
 
@@ -99,6 +107,8 @@ def main():
     ap.add_argument("--scheduler", default="simple")
     ap.add_argument("--base-shift", type=float, default=0.5)
     ap.add_argument("--max-shift", type=float, default=1.15)
+    ap.add_argument("--lora", help="projector .diff LoRA filename in the ComfyUI loras dir")
+    ap.add_argument("--lora-strength", type=float, default=1.0)
     ap.add_argument("--server", default="http://127.0.0.1:8188")
     a = ap.parse_args()
 
@@ -109,7 +119,8 @@ def main():
     g = build_graph(prompt, unet=a.unet, clip=a.clip, vae=a.vae, negative=a.negative,
                     steps=steps, cfg=cfg, seed=a.seed, width=a.width, height=a.height,
                     sampler=a.sampler, scheduler=a.scheduler,
-                    base_shift=a.base_shift, max_shift=a.max_shift)
+                    base_shift=a.base_shift, max_shift=a.max_shift,
+                    lora=a.lora, lora_strength=a.lora_strength)
     ok = run(g, a.out, server=a.server)
     print(f"{'saved' if ok else 'FAILED'} {a.out}  (preset={a.preset} steps={steps} cfg={cfg} "
           f"{a.width}x{a.height} seed={a.seed})")
