@@ -8,10 +8,11 @@ in output is attributable to the projector reweighting you apply.
 
 ## Files
 
-- `krea2_turbo_ab_stock.json` — a plain Krea 2 Turbo t2i graph (UNETLoader → CLIPLoader[krea2] → KSampler →
+- `krea2_turbo_t2i.json` — a plain Krea 2 Turbo t2i graph (UNETLoader → CLIPLoader[krea2] → KSampler →
   VAEDecode), fixed seed, no prompt-enhancement. A clean base to build on.
-- `krea2_turbo_ab_projedit.json` — the same graph with a projector-reweighted checkpoint, for an A/B
-  comparison of the layer aggregation.
+- `krea2_turbo_solo_explorer.json` — the base graph plus a **LoraLoaderModelOnly** loading one single-layer
+  probe (`projector_solo_b08_L26.safetensors`) at strength 1, so the image is driven by one selected layer.
+  Swap the `lora_name` to sweep the 12. (Generate the probes first: `krea2-proj solo` — see the repo README.)
 
 ## How to explore per-layer contribution
 
