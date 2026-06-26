@@ -82,8 +82,14 @@ an architecture reveal:
    (L8-L20, peak L14 +0.71) and strongly negative on deep layers (L23 -1.44, L29 -0.89, L32 -0.61). Fixed
    weights → prompt-independent. The final text vector ≈ "mid minus deep". **High confidence.**
 
-Caveat: the projector's signed weights act on the attention-**mixed** slots (post block 0/1), not raw
-layers; and this is the **layerwise** attention only (2 refiner blocks after the projector not yet mapped).
+Caveat: the projector's signed weights act on the attention-**mixed** slots (post block 0/1), not raw layers.
+
+**Refiner blocks (mapped) + RAW check (2026-06-26):** the 2 refiner blocks (token attention, post-projector)
+are **diffuse** — normalized entropy ~0.95, peak ~6× uniform, no sink — so the striking structure is in the
+layer-fusion, not the token-refinement. And the whole `txtfusion` is **checkpoint-agnostic**: RAW vs Turbo
+projector weights are identical (cosine 1.0, 12/12 signs) and the L20 hub holds on RAW (92–95% of content
+tokens). So the L20 hub + contrastive projector are "Krea 2" findings, not "Turbo"-specific.
+Data: `data/raw_validation/raw_vs_turbo.json`.
 
 ## Attributes vs the projector-rebalance lever (2026-06-26)
 

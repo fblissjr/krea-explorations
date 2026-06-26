@@ -97,8 +97,10 @@ clearly, and a stock-vs-rebalanced test renders them either way. Boosting the de
 lever) mainly shifts **detail, contrast, and intensity** — consistent with the deep layers carrying fine
 detail (see Prior work) — rather than changing whether an attribute appears.
 
-Confidence is bounded by: probes done at a handful of prompts/seeds, an image-level distance metric for the
-leave-one-out ranking, and the attention maps covering the layer-fusion (pre-projector) blocks only.
+Confidence is bounded by probes done at a handful of prompts/seeds and an image-level distance metric for the
+leave-one-out ranking. The layer-fusion findings hold on **both RAW and Turbo** — the `txtfusion` weights are
+near-identical across checkpoints (projector cosine 1.0; L20 hub 92–95% on RAW) — and the **refiner/token
+blocks are diffuse** (no hub), so the striking structure lives in the layer-fusion, not the token-refinement.
 
 ## Reverse-caption probing
 
