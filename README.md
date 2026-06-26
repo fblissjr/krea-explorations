@@ -2,14 +2,17 @@
 
 Last updated: 2026-06-26
 
-Tools to **inspect, edit, and explore how Krea 2 combines its text-encoder layers**.
+A small, dependency-light toolkit to **inspect, edit, and explore how Krea 2 combines its text-encoder
+layers** — its "multilayer feature aggregation". With it you can:
 
-Krea 2's text encoder is Qwen3-VL-4B. The DiT does not use a single hidden state — it takes **12 selected
-encoder hidden-state layers** `[2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]` (Krea's `select_layers`) and
-combines them with cross-layer attention followed by a learned `Linear(12 → 1)` projector
-(`txtfusion.projector`, weight `[1, 12]`). Krea calls this **"multilayer feature aggregation"**. (ComfyUI
-calls the selected layers "taps".) This repo is a small, dependency-light toolkit for looking at — and
-turning the knobs on — that aggregation.
+- read and **per-layer-scale the learned projector** that fuses the layers,
+- emit **tiny projector LoRAs** for arbitrary per-layer gains (load with the stock LoRA loader, no custom
+  node, ~300 bytes each),
+- **isolate a single encoder layer** to see what it contributes to the image, and
+- **recompute the layer-fusion attention maps** from the open weights.
+
+Everything runs on CPU and edits the checkpoint in place — one tensor in a 26 GB model in seconds, without
+loading the full thing.
 
 ## Components
 
@@ -19,11 +22,8 @@ turning the knobs on — that aggregation.
 | `projector` | `read_projector` / `scale_projector` — read and per-layer-scale the learned `txtfusion.projector`. |
 | `projector_lora` | Emit tiny `txtfusion.projector.diff` LoRAs for arbitrary per-layer gains (`diff = orig*(gain-1)`, so strength 1 = exact gains). `make_band_isolation_loras` emits 12 single-layer probes. Loads via the stock `LoraLoaderModelOnly` — **no custom node required**, ~300 bytes each. |
 | `comfy_nodes` | A ComfyUI node, **Krea 2 Projector Rebalance** (`conditioning/Krea2`), that reweights the projector live via the ModelPatcher (`preset` `uniform`/`custom`, `strength`, `per_layer_weights`, `solo_band` to isolate one layer). Restart ComfyUI to load it. |
-| `cli` | `krea2-proj inspect | lora | solo`. |
+| `cli` | `krea2-proj inspect \| lora \| solo`. |
 | `attention_stats` + `scripts/extract_attention.py` | Pure-numpy summarization helpers, plus a script that loads the Krea 2 CLIP and the DiT's `txtfusion` weights (CPU) and recomputes the 12×12 layer-fusion attention maps (head-averaged, per-head, cross-prompt). |
-
-Editing weights (not activations) keeps the conditioning in distribution: the model's own downstream
-RMSNorm holds magnitude, so reweighting changes only the *direction* of the combined text vector.
 
 ## Usage
 
@@ -48,13 +48,27 @@ In ComfyUI, either load an emitted `.diff` file with the stock **LoraLoaderModel
 exactly; `solo_band` (or a `solo/` LoRA at strength 1) isolates a single selected layer so you can see what
 it contributes.
 
+## How Krea 2's text conditioning works
+
+Krea 2's text encoder is a frozen Qwen3-VL-4B. The DiT does not consume a single hidden state — Krea's
+`select_layers` picks **12 encoder hidden-state layers** `[2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]`,
+mixes them with **cross-layer attention**, and combines them through a learned `Linear(12 → 1)` projector
+(`txtfusion.projector`, weight `[1, 12]`) before the refiner blocks. Krea calls this **multilayer feature
+aggregation** (ComfyUI exposes the selected layers as "taps"). This repo turns the knobs on that aggregation
+and measures what it learned.
+
+Editing weights (not activations) keeps the conditioning in distribution: the model's own downstream RMSNorm
+holds magnitude, so reweighting changes only the *direction* of the combined text vector.
+
 ## What we've found
 
 > Framing: the *architecture* (cross-layer attention over the 12 layers → `Linear(12→1)` projector →
 > refiners) is public — see Prior work. The items below **characterize the trained model's behavior**, read
 > off the open weights; they are not architecture we uncovered. Most are low-effort to reproduce (the
-> projector is 12 numbers in the checkpoint; the hub is one forward pass). The value is the
-> characterization + a few falsifications (below), not a hidden-structure reveal.
+> projector is 12 numbers in the checkpoint; the hub is one forward pass). The value is the characterization
+> plus a few falsifications, not a hidden-structure reveal. Full write-up with confidence levels in
+> [`docs/findings.md`](docs/findings.md); attention-map figures in `docs/figures/`, numeric arrays in
+> `docs/data/`.
 
 **Confirmatory (expected from LLM-layer priors).** Isolating one selected layer at a time (and the
 complementary leave-one-out): the **deep** selected layers (L23/26/29/32) carry the renderable content and
@@ -63,24 +77,32 @@ the **final layer (L35) alone is unusable for image generation** — consistent 
 aggregating multiple layers rather than using the last hidden state.
 
 **Measured (empirical; read off the open model, and — as far as we know — unpublished).**
-- **L20 acts as a mid-layer attention hub.** In the layer-fusion attention, nearly every selected
-  layer attends to L20. Validated across **5 prompts** (photo / anime / illustration + two long dense
-  prompts) and, on the dense ones, **content-token-masked**: L20 is the top key-layer for **~91–95% of
-  content tokens** — so it's content-driven, not a padding/template artifact — and it holds across most
-  attention heads. The concentration is a **learned *directional* hub, not a magnitude sink**: L20's
-  hidden-state norm is mid-pack (rank 6/12) and its pre-norm key norm is among the *lowest* (rank 10/12),
-  and the block's `qknorm` equalizes every layer's key magnitude — so the routing is decided by learned
-  query/key *direction* (the trained `wq`/`wk` send most queries toward L20's key direction), not by
-  magnitude, and not by any hardcoded index (the layerwise blocks carry no positional encoding).
+- **L20 acts as a mid-layer attention hub.** In the layer-fusion attention, nearly every selected layer
+  attends to L20. Validated across **5 prompts** (photo / anime / illustration + two long dense prompts)
+  and, on the dense ones, **content-token-masked**: L20 is the top key-layer for **~91–95% of content
+  tokens** — so it's content-driven, not a padding/template artifact — and it holds across most attention
+  heads. The concentration is a **learned *directional* hub, not a magnitude sink**: L20's hidden-state norm
+  is mid-pack (rank 6/12) and its pre-norm key norm is among the *lowest* (rank 10/12), and the block's
+  `qknorm` equalizes every layer's key magnitude — so the routing is decided by learned query/key
+  *direction* (the trained `wq`/`wk` send most queries toward L20's key direction), not by magnitude, and
+  not by any hardcoded index (the layerwise blocks carry no positional encoding).
 - **The projector combines contrastively, not as an average.** Its learned weights are positive on the mid
   layers (peak at L14) and strongly negative on the deep layers (L23/29/32) — roughly "mid minus deep",
   applied to the attention-mixed slots.
 
+**Falsifications (the more useful part).** The layer-fusion/projector is **not** where benign attributes get
+suppressed: a difference-of-means probe shows attributes the community reports as under-represented
+(expression, "wet", blush) survive the learned aggregation *better* than ordinary content controls. So
+reweighting the projector to "unfilter" the model **targets the wrong stage**.
+
 Confidence is bounded by: probes done at a handful of prompts/seeds, an image-level distance metric for the
 leave-one-out ranking, and the attention maps covering the layer-fusion (pre-projector) blocks only.
 
-## LLM System Prompt
-Here's the system prompt I'm testing with to generate from image to text:
+## Reverse-caption probing
+
+We also use a reverse-caption loop (image → dense caption from a vision LLM → regenerate) to derive dense
+test prompts from reference images. Example captions are in
+[`examples/test_prompts/`](examples/test_prompts/). The image-to-text system prompt used to produce them:
 
 ```
 Describe the image by detailing the color, shape, size, texture, quantity, text, and spatial relationships of the objects and the background. Write a single cohesive paragraph (no lists or markdown), as a dense text-to-image caption. Open by naming the actual medium/style (e.g. photograph, painting, illustration, 3D render — but identify what it truly is). Cover composition and framing, the main subject(s) and their attributes, and the lighting. Put any visible text in quotes, exactly. Be specific and grounded — describe only what is actually visible; do not invent details, intent, or backstory.
@@ -97,11 +119,9 @@ magnitude). Those points — and the magnitude/direction reasoning above — are
 findings overlap with that work.
 
 What this adds is **characterization of the combination** — reading the model's internals rather than only
-scaling the conditioning tensor: the **L20 attention hub** and the **contrastive (mid-minus-deep)
-projector** (the "Measured" findings above), plus a few **falsifications** that are the more useful part —
-notably that the layer-fusion/projector is **not** where benign attributes get suppressed (they survive the
-aggregation *better* than ordinary content), so reweighting the projector to "unfilter" the model targets
-the wrong stage. None of this is hidden architecture; it's measurement of an open model.
+scaling the conditioning tensor: the **L20 attention hub** and the **contrastive (mid-minus-deep) projector**
+(the "Measured" findings), plus the **falsification** above. None of this is hidden architecture; it's
+measurement of an open model.
 
 ## License
 
