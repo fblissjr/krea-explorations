@@ -85,8 +85,11 @@ an architecture reveal:
 Caveat: the projector's signed weights act on the attention-**mixed** slots (post block 0/1), not raw layers.
 
 **Refiner blocks (mapped) + RAW check (2026-06-26):** the 2 refiner blocks (token attention, post-projector)
-are **diffuse** — normalized entropy ~0.95, peak ~6× uniform, no sink — so the striking structure is in the
-layer-fusion, not the token-refinement. And the whole `txtfusion` is **checkpoint-agnostic**: RAW vs Turbo
+do **local, diagonal-dominant token self-attention** — each token attends mainly to itself + near neighbors
+(~27–31% of attention mass within ±8 of the diagonal) over a low global floor, with only a few **weak** hub
+tokens (a template token ~#7 + a handful of content tokens, ~3–6× uniform; received-entropy 0.94–0.96 → no
+dominant sink). So the refiner does ordinary local token refinement — structurally unlike the layerwise
+**L20 layer-hub**. Map: `docs/figures/refiner_maps.png`. And the whole `txtfusion` is **checkpoint-agnostic**: RAW vs Turbo
 projector weights are identical (cosine 1.0, 12/12 signs) and the L20 hub holds on RAW (92–95% of content
 tokens). So the L20 hub + contrastive projector are "Krea 2" findings, not "Turbo"-specific.
 Data: `data/raw_validation/raw_vs_turbo.json`.
