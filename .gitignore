@@ -168,6 +168,7 @@ data/
 
 # internal-only docs
 internal/
+coderef/
 
 # not ours (exported from ComfyUI)
 example_workflows/krea2_turbo_fast.json
