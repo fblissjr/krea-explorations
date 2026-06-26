@@ -1,0 +1,30 @@
+[project]
+name = "krea2-explorations"
+version = "0.1.0"
+description = "Tools for understanding and surgically editing Krea2 text conditioning (per-layer projector edits, checkpoint analysis)."
+readme = "README.md"
+authors = [
+    { name = "Fred Bliss", email = "11861687+fblissjr@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "ml-dtypes>=0.5.4",
+    "numpy>=2.5.0",
+    "orjson>=3.11.9",
+]
+
+[project.scripts]
+krea2-proj = "krea2_explorations.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.18,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

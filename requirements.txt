@@ -1,0 +1,4 @@
+# Runtime deps for the ComfyUI node (numpy/torch are already provided by ComfyUI).
+numpy
+ml_dtypes
+orjson
