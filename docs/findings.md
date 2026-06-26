@@ -106,9 +106,20 @@ behaves as a detail/intensity knob. Caveats: a few prompts/seeds, controls not m
 attributes only (not near-safety-boundary cases), visual + correlational rather than a hard metric.
 Data in `data/attribute_directions/` (probe + causal + stock-vs-rebalanced grids).
 
-## In progress — projector-LoRA A/B (2026-06-26)
+## Projector-LoRA A/B — result (2026-06-26)
 
 The community hand-rebalances the projector; the trainers can *learn* it (diffusers + musubi target
-`text_fusion.projector` by default, ai-toolkit excludes it). Testing whether **training** the 12→1 layer-mix
-changes a LoRA's behavior: two identical Krea-2-Raw DreamBooth LoRAs (QLoRA, NF4) differing only in whether
-`text_fusion.projector` is a LoRA target, compared on held-out prompts. Result pending.
+`text_fusion.projector` by default; ai-toolkit excludes it). Tested whether **training** the 12→1 layer-mix
+changes a LoRA: two identical Krea-2-Raw DreamBooth LoRAs (QLoRA/NF4, 5 imgs, 300 steps, rank 16) differing
+*only* in whether `text_fusion.projector` is a LoRA target; compared on held-out prompts (RAW, fresh seed).
+
+**Result: at this scale, training the projector made no meaningful difference.** Both arms learned the
+subject comparably and neither distorted an unrelated control prompt; differences were within one-seed noise
+(a faint hint the with-projector arm kept the scene slightly more faithful on the "beach" prompt, but weak).
+So for a small *subject* LoRA, including the projector (diffusers/musubi default) vs freezing it (ai-toolkit)
+doesn't much matter — consistent with the projector being a modest lever and the diffusers README's advice to
+narrow to attention layers for long runs.
+
+Caveats: quick proof — tiny dataset, 300 steps, rank 16, one validation seed, a *subject* (DreamBooth) LoRA
+not a *style* LoRA (where the semantic-depth layer-mix might matter more), NF4-quantized. Doesn't rule out the
+projector mattering in a longer or style-focused run. Data: `data/projector_ab/`.
