@@ -11,6 +11,7 @@ dependencies = [
     "ml-dtypes>=0.5.4",
     "numpy>=2.5.0",
     "orjson>=3.11.9",
+    "pillow>=12.2.0",
 ]
 
 [project.scripts]

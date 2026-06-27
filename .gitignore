@@ -170,6 +170,7 @@ cython_debug/
 # internal-only docs
 internal/
 coderef/
+update-coderef.sh
 
 # not ours (exported from ComfyUI)
 example_workflows/krea2_turbo_fast.json

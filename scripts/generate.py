@@ -22,7 +22,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-PRESETS = {"turbo": dict(steps=8, cfg=1.0), "raw": dict(steps=28, cfg=4.5)}
+# ComfyUI cfg = reference guidance + 1 (Krea: v = cond + g*(cond-uncond); ComfyUI: uncond + cfg*(...)).
+# Reference inference.py default guidance=4.5 -> ComfyUI cfg=5.5. Turbo runs CFG off (cfg=1.0).
+PRESETS = {"turbo": dict(steps=8, cfg=1.0), "raw": dict(steps=28, cfg=5.5)}
 
 
 def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=42,

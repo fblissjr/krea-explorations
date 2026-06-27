@@ -19,6 +19,13 @@ All notable changes to this project are documented here. Format follows
 - `attention_stats` (pure-numpy head/token averaging + hub-strength ranking) and
   `scripts/extract_attention.py`: load the Krea2 CLIP + the DiT's `txtfusion` weights (CPU) and recompute
   the 12x12 layer-fusion attention maps (head-averaged, per-head, cross-prompt).
+- `image_grid`: reusable labeled contact-sheet builder (`build_contact_sheet`) for comparison figures
+  (rows x cols of image paths / `PIL.Image` / `None`; missing cells render as placeholders). The
+  experiment validators share it instead of re-inlining PIL.
+- `rope_untwist` / `krea2_untwist_attn` / `krea2_untwist_node`: a ComfyUI node
+  ("Krea 2 Untwist Style Reference") for training-free reference-image style transfer via untwisting-RoPE
+  shared attention, built for Krea2's real `[32,48,48]` RoPE (not the community fork's `[64,64]`). Patches
+  the image DiT blocks only (txtfusion untouched); renoise-to-sigma reference injection (no RF-inversion).
 
 ### Findings
 - Interpretability of the layer aggregation: a universal mid-layer attention hub (L20) and a contrastive

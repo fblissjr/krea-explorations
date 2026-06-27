@@ -1,6 +1,6 @@
 # krea2-explorations
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 A small, dependency-light toolkit to **inspect, edit, and explore how Krea 2 combines its text-encoder
 layers** — its "multilayer feature aggregation". With it you can:
@@ -24,6 +24,8 @@ loading the full thing.
 | `comfy_nodes` | A ComfyUI node, **Krea 2 Projector Rebalance** (`conditioning/Krea2`), that reweights the projector live via the ModelPatcher (`preset` `uniform`/`custom`, `strength`, `per_layer_weights`, `solo_band` to isolate one layer). Restart ComfyUI to load it. |
 | `cli` | `krea2-proj inspect \| lora \| solo`. |
 | `attention_stats` + `scripts/extract_attention.py` | Pure-numpy summarization helpers, plus a script that loads the Krea 2 CLIP and the DiT's `txtfusion` weights (CPU) and recomputes the 12×12 layer-fusion attention maps (head-averaged, per-head, cross-prompt). |
+| `image_grid` | Reusable labeled contact-sheet builder (`build_contact_sheet`) for comparison figures — rows × cols of image paths / `PIL.Image` / `None` (missing cells become placeholders). |
+| `krea2_untwist_node` (+ `rope_untwist`, `krea2_untwist_attn`) | **Experimental.** A ComfyUI node, **Krea 2 Untwist Style Reference** (`conditioning/Krea2`), for **training-free reference-image style transfer** via untwisting-RoPE shared attention — a separate *positional-axis* lever (the rest of this toolkit edits the *feature/conditioning axis*). Built for Krea 2's real `[32,48,48]` RoPE. v1 uses renoise-to-sigma reference injection (no RF-inversion); style transfer needs a **low `high_scale`** (the high default copies the reference). Restart ComfyUI to load it. |
 
 ## Usage
 
@@ -127,6 +129,12 @@ What this adds is **characterization of the combination** — reading the model'
 scaling the conditioning tensor: the **L20 attention hub** and the **contrastive (mid-minus-deep) projector**
 (the "Measured" findings), plus the attribute / rebalance-lever measurements above. None of this is hidden
 architecture; it's measurement of an open model.
+
+The experimental **Untwist Style Reference** node implements *Untwisting RoPE: Frequency Control for Shared
+Attention in DiTs* ([arXiv 2602.05013](https://arxiv.org/abs/2602.05013)). Community ComfyUI nodes exist
+([`BigStationW/ComfyUi-Untwisting-RoPE`](https://github.com/BigStationW/ComfyUi-Untwisting-RoPE) and a Krea 2
+fork); ours is an independent rebuild on Krea 2's real `[32,48,48]` RoPE axes rather than a `[64,64]`
+approximation.
 
 ## License
 

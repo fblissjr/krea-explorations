@@ -88,7 +88,12 @@ class Krea2ProjectorRebalance:
         return (m,)
 
 
-NODE_CLASS_MAPPINGS = {"Krea2ProjectorRebalance": Krea2ProjectorRebalance}
-NODE_DISPLAY_NAME_MAPPINGS = {"Krea2ProjectorRebalance": "Krea 2 Projector Rebalance"}
+from .krea2_untwist_node import (
+    NODE_CLASS_MAPPINGS as _UNTWIST_NODES,
+    NODE_DISPLAY_NAME_MAPPINGS as _UNTWIST_NAMES,
+)
+
+NODE_CLASS_MAPPINGS = {"Krea2ProjectorRebalance": Krea2ProjectorRebalance, **_UNTWIST_NODES}
+NODE_DISPLAY_NAME_MAPPINGS = {"Krea2ProjectorRebalance": "Krea 2 Projector Rebalance", **_UNTWIST_NAMES}
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "Krea2ProjectorRebalance", "SELECT_LAYERS"]
