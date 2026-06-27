@@ -1,6 +1,6 @@
 # Findings TLDR — Krea2 selected-layer probes
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 Basis: solo (keep-one) + leave-one-out (drop-one) sweeps on **one prompt** (portrait), seed 42,
 Krea2 **Turbo fp8**, 8 steps euler/simple, image-level **RGB-RMS** distance. Cross-style sweeps
@@ -126,3 +126,60 @@ narrow to attention layers for long runs.
 Caveats: quick proof — tiny dataset, 300 steps, rank 16, one validation seed, a *subject* (DreamBooth) LoRA
 not a *style* LoRA (where the semantic-depth layer-mix might matter more), NF4-quantized. Doesn't rule out the
 projector mattering in a longer or style-focused run. Data: `data/projector_ab/`.
+
+## Prompt-side steering: a `<think>` block (or system prompt) as a steering vector (2026-06-27)
+
+Every lever above is a **weight/activation** edit (projector rebalance, single-layer isolation). This one is
+**prompt-side**, and it's cleaner.
+
+Turbo's distillation flattens intense expression: prompt for an intense expression (e.g. "furious",
+"terrified") and stock Turbo returns a near-neutral face. The community deep-band rebalance lever restores
+intensity, but as an *off-distribution* weight edit (it saturates the projector). An *in-distribution*
+alternative: prepend a short `<think>` block reasoning about the target expression, injected through the
+tokenizer's **skip-template route** — a full `<|im_start|>…<think>…</think>` string passed as the prompt, which
+the qwen3vl tokenizer emits verbatim, so no ComfyUI/pipeline edit is needed.
+
+**Result** (Turbo, mu pinned, same seed, 4 expressions × {stock, +think, +deep-band rebalance}): the `<think>`
+block restores the flattened expressions **as well as or better than** the deep-band rebalance lever, with
+adherence intact — clean photoreal portraits, correct framing/lighting/background, no artifacts, no text
+flood, no style drift.
+
+**Mechanism** (CPU probe, no generation): the `<think>` span is a strong, consistent conditioning lever —
+~17–24% shift in the 12 selected hidden states, **0.86 direction consistency** across variants, energy
+concentrated at **L20/L23** (the same hub the layer-fusion findings land on). It doesn't add new content; it
+nudges the existing conditioning along its own dominant axis. Content scales mostly *one* direction
+(neutral↔steer cosine 0.87) → a tunable "push harder along the model's own intent" knob, i.e. a steering
+vector.
+
+**Reframe.** The think block and the deep-band rebalance lever are not different mechanisms — they are
+different **write-points onto one steering direction**, one off-distribution (weights) and one
+in-distribution (prompt). `<think>` is a convenient, high-leverage, in-distribution place to write.
+Expectation: this should generalize to any axis the encoder already represents (style intensity, detail,
+mood), as long as you *push* rather than *teleport*.
+
+**Verified tokenization + the system-turn strip (2026-06-27).** Ran Comfy's *actual* `Krea2Tokenizer` /
+`Krea2TEModel` (`comfy/text_encoders/krea2.py`) on the injected string, rather than assuming:
+- **Special tokens are tokenized per the model config**, not as literal text. `<think>` → single id 151667,
+  `</think>` → 151668, `<|im_start|>` → 151644 (slow-tokenizer check: each encodes to exactly one id). The
+  skip-template route (`text.startswith('<|im_start|>')`) hands our raw string straight to the tokenizer, so
+  the chat structure is preserved — it is **not** shoved into the user slot or escaped.
+- **Krea 2 strips the system turn before the DiT.** `Krea2TEModel.encode_token_weights` finds the *second*
+  `<|im_start|>` (the user turn) and slices `out = out[:, :, template_end:]` (then +3 to skip
+  `<|im_start|>user\n`). On our string (3 `<|im_start|>` at token idx 0/31/53), the cut lands at idx 34, so
+  the entire `<|im_start|>system … <|im_end|><|im_start|>user\n` prefix (34 tokens) is **discarded**; the user
+  content + assistant turn (incl. our `<think>…</think>`, 46 tokens) survive. Verified the `<think>` ids are
+  on the surviving side.
+
+So **not every position is interchangeable**: the *directly* steerable write-points are the **user turn and
+the assistant `<think>` turn** (both survive). A **system-turn** prompt does **not** inject conditioning — its
+tokens are sliced off — and can only influence the result **indirectly** (the surviving tokens attended back
+over the system prefix during the causal encoder pass). That refines the earlier "system prompts work too":
+they may nudge via attention contamination, but they are not a direct write-point the way the think block is.
+(This is also the EXP4 prefix-strip audit — answered here.)
+
+**Confidence: low–medium** on the visual result — a believable-direction outcome, not a measured effect size
+(1 subject, 2 seeds, 4 expressions, single visual read; identity drifted slightly on one cell — steering
+moves a bit more than the one attribute you aim at). The tokenization/strip facts above are **high** (runtime
+verified). Untested twin: does a system-turn prompt steer *at all* through the indirect path? A labeled-axis
+follow-up (extract a named direction from a model pair, check whether the projector passes it, then steer with
+±it) would turn this from "steering works" into "steer along a *named* axis on purpose".

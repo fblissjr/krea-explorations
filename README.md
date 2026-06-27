@@ -99,6 +99,31 @@ clearly, and a stock-vs-rebalanced test renders them either way. Boosting the de
 lever) mainly shifts **detail, contrast, and intensity** — consistent with the deep layers carrying fine
 detail (see Prior work) — rather than changing whether an attribute appears.
 
+**Prompt-side steering (a `<think>` block in the assistant turn).** Beyond editing weights, the conditioning
+can be steered from the *prompt side*. Turbo's distillation flattens intense expression; appending a short
+`<think>` reasoning span to the assistant turn — injected via the tokenizer's skip-template route (a full
+`<|im_start|>…` string passed as the prompt) — restores it **in-distribution**, as well as or better than the
+deep-band rebalance lever, with adherence intact. A CPU probe shows the span shifts the selected hidden
+states ~17–24% along their own dominant axis (0.86 direction consistency, energy at the L20/L23 hub): it
+behaves like a **steering vector**.
+
+![Krea 2 Turbo, same seed, four expressions across three columns — stock prompt, + a `<think>` block, and + the deep-band rebalance lever. The in-distribution `<think>` block restores the distillation-flattened intense expressions (furious, terrified) as well as or better than the weight-space rebalance lever, with prompt adherence intact.](docs/figures/think_steering_grid.png)
+
+*Same seed (#123); only the column lever changes. The `<think>` block (middle) restores Turbo's
+distillation-flattened expression in-distribution, matching or beating the deep-band rebalance lever (right)
+without leaving the data manifold. `joyful` (bottom) is a control — it isn't a flattened expression, so it
+renders in every column.*
+
+Two implementation details, **verified by running Comfy's actual Krea 2 tokenizer** (not assumed): (1) the
+special tokens are tokenized per the model's config — `<think>`/`</think>`/`<|im_start|>` each map to a single
+token id (151667 / 151668 / 151644), not to literal angle-bracket text; (2) **Krea 2's text encoder strips
+the system turn**: `Krea2TEModel.encode_token_weights` slices the conditioning from the *second* `<|im_start|>`
+(the user turn) onward, so the entire `<|im_start|>system … <|im_end|>` block is discarded before the DiT sees
+it. So the surviving, directly-steerable write-points are the **user turn and the assistant `<think>` turn**;
+a *system*-turn prompt only influences conditioning **indirectly** (the surviving tokens attend back over it
+during the encoder pass), not as injected conditioning. Low–medium confidence on the visual result (one
+subject, a few seeds). Details in [`docs/findings.md`](docs/findings.md).
+
 Confidence is bounded by probes done at a handful of prompts/seeds and an image-level distance metric for the
 leave-one-out ranking. The layer-fusion findings hold on **both RAW and Turbo** — the `txtfusion` weights are
 near-identical across checkpoints (projector cosine 1.0; L20 hub 92–95% on RAW) — and the **refiner/token

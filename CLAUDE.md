@@ -11,6 +11,21 @@ Tools for measuring and surgically editing Krea 2's text conditioning (per-layer
 checkpoint analysis, attention extraction) plus the experiment harnesses that test them. Measure-first:
 lead with falsifications, not "discoveries".
 
+## Two lever classes (keep both in mind)
+
+Two ways to steer Krea 2's conditioning, both in scope here:
+
+1. **Weight/activation edits** — the projector rebalance + single-layer isolation tooling (the core package:
+   `projector`, `projector_lora`, `comfy_nodes`). Edits weights, stays in-distribution via downstream RMSNorm.
+2. **Prompt-side steering** — a `<think>` block / system prompt / prefix written into the text the encoder
+   sees. Inject custom spans via the **tokenizer skip-template route**: pass a full `<|im_start|>…` string as
+   the prompt and the qwen3vl tokenizer emits it verbatim, so no ComfyUI/pipeline edit is needed. It behaves
+   like a steering vector — push within-distribution and prompt adherence holds. See `docs/findings.md`
+   ("Prompt-side steering").
+
+Public/tracked files stay benign in name and content; sensitive prompts, data, and any
+sensitive-referencing filenames live only in gitignored `internal/` and `data/`.
+
 ## Comparison grids / figures — use the shared util
 
 Experiment validators produce comparison contact sheets (rows = prompts/variants, cols = arms/methods).

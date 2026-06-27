@@ -37,6 +37,16 @@ All notable changes to this project are documented here. Format follows
 - Difference-of-means probe: benign attributes (expression / wet / blush) survive the learned aggregation
   *better* than ordinary content controls — i.e. the projector/fusion is not where such attributes are
   suppressed.
+- Prompt-side steering: an in-distribution `<think>` reasoning span (appended to the assistant turn via the
+  tokenizer's skip-template route) restores Turbo's distillation-flattened expression as well as or better
+  than the deep-band rebalance lever, with prompt adherence intact — i.e. it acts as a steering vector
+  (~17–24% conditioning shift, 0.86 direction consistency, energy at the L20/L23 hub). Low–medium confidence
+  (one subject, few seeds, visual read).
+- Verified (runtime, against Comfy's actual Krea 2 tokenizer): special tokens are tokenized per the model
+  config (`<think>`/`</think>`/`<|im_start|>` → single ids 151667/151668/151644, not literal text), and
+  `Krea2TEModel.encode_token_weights` **strips the system turn** (slices conditioning from the user turn
+  onward). Consequence: the directly-steerable write-points are the user turn and the assistant `<think>`
+  turn; a system-turn prompt only influences conditioning indirectly (via attention), not as injected tokens.
 
 ### Documentation
 - Published `docs/findings.md`, `docs/figures/` (attention maps), `docs/data/` (numeric arrays), and
