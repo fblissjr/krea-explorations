@@ -207,7 +207,8 @@ confidence** (visual read, n≈1 prompt). Full write-up + figures: [`turbo_lora_
    8 steps` buys cfg/negative flexibility at near-Turbo speed.
 4. **The negative branch is active but weak.** At cfg>1 the uncond path is live and perturbs the image, but
    targeted suppression failed (an anti-lamp negative never removed the lamp) — confounded by a target that
-   was over-described in the positive. Whether it steers *cleanly* at partial-distill is still open.
+   was over-described in the positive. (Now **bounded** by the two-sampler work below: even un-confounded and
+   at high cfg, negatives don't steer on Krea 2 regardless of route.)
 5. **The sigma schedule is a weak lever here.** At strength 0.5 / cfg 2.5 / 8 steps, scheduler family barely
    matters (`simple`/`normal`/`sgm_uniform` near-identical); only **`beta`** reframes (composition reroll)
    and only **`mu3.0`** brightens/blooms. The strength and cfg dials dominate the schedule shape.
@@ -221,3 +222,25 @@ recovering the CFG/negative-prompt guidance that distillation removed. The cost 
 **See also:** [`turbo_lora_strength.md`](turbo_lora_strength.md) — the full dial characterization with dial
 table, practical recipe, and the five probe figures (strength · cfg headroom · negative branch · steps ·
 scheduler).
+
+## Two-sampler split: RAW high-noise → Turbo low-noise (2026-06-28)
+
+The strength dial above moves one model uniformly; this moves *per step* — a high-noise model for the first
+`boundary` steps, a low-noise model for the rest, on one shared schedule (Wan-2.2-style leftover-noise
+handoff; LTX-2 does the LoRA-swap version). For Krea 2: **RAW for the high-noise steps → Turbo for the
+finish**. Builder `scripts/generate.build_split_graph`; full write-up + figures:
+[`two_sampler_split.md`](two_sampler_split.md). **Low–medium confidence** (1–2 prompts, ≤3 seeds, fp8, visual).
+
+- **It unlocks seed/compositional diversity at near-Turbo quality.** Turbo collapses same-seed compositions;
+  letting RAW form the high-noise steps restores variety (clear by boundary k2–3 of 8), and the **Turbo finish
+  rescues RAW's low-step under-denoising** (pure RAW at 8 steps is hazy; the split is Turbo-sharp). Sweet spot
+  ≈ k2–3 of 8. This is the *working* version of "unlock low-step diversity" — letting RAW form the composition
+  over several high-noise steps, not the single-step sigma-rescale that nulled earlier.
+- **It gives clean CFG headroom.** The high cfg runs only on the RAW high-noise steps (Turbo finishes at cfg
+  1), so **cfg up to ~5 on the RAW stage stays clean** — prompt-adherence headroom neither pure Turbo (burns
+  >2.5) nor a uniform low-strength de-distill offers. cfg ~8 is past the clean ceiling (artifacts).
+- **It does *not* restore negative-prompt control.** A negative can't override an explicit positive mention,
+  and a strong global *style* negative never flips style — at high cfg it only adds artifacts. True for Turbo,
+  uniform de-distill, **and** the split, and RAW is pre-distill — so the uncond/negative direction is a weak
+  semantic lever on this model, not something de-distillation or the split brings back. The split's value is
+  **diversity + CFG headroom**, not negatives.

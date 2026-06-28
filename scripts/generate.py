@@ -30,11 +30,15 @@ PRESETS = {"turbo": dict(steps=8, cfg=1.0), "raw": dict(steps=28, cfg=5.5)}
 def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=42,
                 width=1024, height=1024, sampler="euler", scheduler="simple",
                 base_shift=0.5, max_shift=1.15, lora=None, lora_strength=1.0,
-                filename_prefix="krea2_gen"):
+                sage=None, filename_prefix="krea2_gen"):
     """Build a ComfyUI API graph for a single Krea 2 txt2img with the flow shift applied.
 
     Pass ``lora=<filename in the ComfyUI loras dir>`` (e.g. a projector ``.diff`` LoRA) to insert a
     ``LoraLoaderModelOnly`` before the sampler — used for stock-vs-rebalanced comparisons.
+
+    Pass ``sage=<mode>`` (e.g. "auto") to insert the ``Krea2SageAttention`` node (our own
+    optimized_attention_override, no KJNodes) on the model edge before the sampler — the Phase-0
+    sage-vs-SDPA A/B. Same seed both arms; diff the outputs and compare wall-clock.
     """
     g = {"ckpt": {"class_type": "UNETLoader",
                   "inputs": {"unet_name": unet, "weight_dtype": "default"}}}
@@ -46,6 +50,11 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
     g["shift"] = {"class_type": "ModelSamplingFlux",
                   "inputs": {"model": model_src, "max_shift": max_shift,
                              "base_shift": base_shift, "width": width, "height": height}}
+    sampler_model = ["shift", 0]
+    if sage and sage != "disabled":
+        g["sage"] = {"class_type": "Krea2SageAttention",
+                     "inputs": {"model": ["shift", 0], "sage_mode": sage}}
+        sampler_model = ["sage", 0]
     g["clip"] = {"class_type": "CLIPLoader",
                  "inputs": {"clip_name": clip, "type": "krea2", "device": "default"}}
     g["vae"] = {"class_type": "VAELoader", "inputs": {"vae_name": vae}}
@@ -58,11 +67,86 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
     else:
         g["neg"] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["pos", 0]}}
     g["sampler"] = {"class_type": "KSampler",
-                    "inputs": {"model": ["shift", 0], "positive": ["pos", 0], "negative": ["neg", 0],
+                    "inputs": {"model": sampler_model, "positive": ["pos", 0], "negative": ["neg", 0],
                                "latent_image": ["latent", 0], "seed": seed, "steps": steps,
                                "cfg": cfg, "sampler_name": sampler, "scheduler": scheduler,
                                "denoise": 1.0}}
     g["vaedec"] = {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": ["vae", 0]}}
+    g["save"] = {"class_type": "SaveImage",
+                 "inputs": {"images": ["vaedec", 0], "filename_prefix": filename_prefix}}
+    return g
+
+
+def build_split_graph(prompt, *, unet_high, unet_low, clip, vae, boundary,
+                      negative="", steps=8, cfg_high=2.5, cfg_low=1.0, seed=42,
+                      width=1024, height=1024, sampler="euler", scheduler="simple",
+                      base_shift=0.5, max_shift=1.15,
+                      lora_high=None, lora_high_strength=1.0,
+                      lora_low=None, lora_low_strength=1.0,
+                      filename_prefix="krea2_split"):
+    """Two-sampler split: a high-noise model denoises steps ``[0, boundary)``, a low-noise model finishes
+    ``[boundary, steps)``, on one shared flow-shifted schedule (Wan-2.2-style leftover-noise handoff).
+
+    The high-noise stage carries the guidance — real CFG + ``negative`` — because composition and seed
+    diversity are decided in the high-noise steps; the low-noise stage finishes Turbo-style (``cfg_low`` 1,
+    no negative). ``unet_high`` / ``unet_low`` are the two checkpoints (e.g. RAW then Turbo); pass
+    ``lora_high`` / ``lora_low`` to insert a per-stage ``LoraLoaderModelOnly`` (e.g. the Turbo LoRA on the
+    low stage instead of a separate Turbo checkpoint). ``boundary`` is the handoff step index and must be a
+    real interior split (``0 < boundary < steps``); both stages share ``steps``/``sampler``/``scheduler`` so
+    the schedule is continuous across the handoff.
+    """
+    if not 0 < boundary < steps:
+        raise ValueError(f"boundary must satisfy 0 < boundary < steps; got boundary={boundary}, steps={steps}")
+
+    g = {}
+
+    def model_branch(tag, unet, lora, lora_strength):
+        g[f"{tag}_unet"] = {"class_type": "UNETLoader",
+                            "inputs": {"unet_name": unet, "weight_dtype": "default"}}
+        src = [f"{tag}_unet", 0]
+        if lora:
+            g[f"{tag}_lora"] = {"class_type": "LoraLoaderModelOnly",
+                                "inputs": {"model": src, "lora_name": lora, "strength_model": lora_strength}}
+            src = [f"{tag}_lora", 0]
+        g[f"{tag}_shift"] = {"class_type": "ModelSamplingFlux",
+                             "inputs": {"model": src, "max_shift": max_shift, "base_shift": base_shift,
+                                        "width": width, "height": height}}
+        return [f"{tag}_shift", 0]
+
+    high_model = model_branch("high", unet_high, lora_high, lora_high_strength)
+    low_model = model_branch("low", unet_low, lora_low, lora_low_strength)
+
+    g["clip"] = {"class_type": "CLIPLoader",
+                 "inputs": {"clip_name": clip, "type": "krea2", "device": "default"}}
+    g["vae"] = {"class_type": "VAELoader", "inputs": {"vae_name": vae}}
+    g["pos"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": prompt}}
+    g["latent"] = {"class_type": "EmptyLatentImage",
+                   "inputs": {"width": width, "height": height, "batch_size": 1}}
+
+    def neg_node(name, cfg):
+        # Real negative conditioning when CFG is on; zeroed-out when CFG is off.
+        if cfg > 1.0:
+            g[name] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": negative}}
+        else:
+            g[name] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["pos", 0]}}
+        return [name, 0]
+
+    neg_high = neg_node("neg_high", cfg_high)
+    neg_low = neg_node("neg_low", cfg_low)
+
+    # Stage 1: high-noise model, real CFG, [0, boundary), KEEP the leftover noise for the handoff.
+    g["s1"] = {"class_type": "KSamplerAdvanced",
+               "inputs": {"add_noise": "enable", "noise_seed": seed, "steps": steps, "cfg": cfg_high,
+                          "sampler_name": sampler, "scheduler": scheduler, "positive": ["pos", 0],
+                          "negative": neg_high, "latent_image": ["latent", 0], "start_at_step": 0,
+                          "end_at_step": boundary, "return_with_leftover_noise": "enable", "model": high_model}}
+    # Stage 2: low-noise model, no added noise, continue [boundary, steps), finish clean.
+    g["s2"] = {"class_type": "KSamplerAdvanced",
+               "inputs": {"add_noise": "disable", "noise_seed": seed, "steps": steps, "cfg": cfg_low,
+                          "sampler_name": sampler, "scheduler": scheduler, "positive": ["pos", 0],
+                          "negative": neg_low, "latent_image": ["s1", 0], "start_at_step": boundary,
+                          "end_at_step": steps, "return_with_leftover_noise": "disable", "model": low_model}}
+    g["vaedec"] = {"class_type": "VAEDecode", "inputs": {"samples": ["s2", 0], "vae": ["vae", 0]}}
     g["save"] = {"class_type": "SaveImage",
                  "inputs": {"images": ["vaedec", 0], "filename_prefix": filename_prefix}}
     return g
@@ -74,8 +158,9 @@ def run(graph, out_path, server="http://127.0.0.1:8188", timeout=600):
                                  data=json.dumps({"prompt": graph}).encode(),
                                  headers={"Content-Type": "application/json"})
     pid = json.loads(urllib.request.urlopen(req, timeout=30).read())["prompt_id"]
-    for _ in range(timeout):
-        time.sleep(1)
+    poll = 0.25  # finer than 1s so the A/B wall-clock isn't quantized to whole seconds
+    for _ in range(int(timeout / poll)):
+        time.sleep(poll)
         h = json.loads(urllib.request.urlopen(server + f"/history/{pid}", timeout=30).read())
         if pid in h:
             imgs = h[pid].get("outputs", {}).get("save", {}).get("images", [])
@@ -111,6 +196,10 @@ def main():
     ap.add_argument("--max-shift", type=float, default=1.15)
     ap.add_argument("--lora", help="projector .diff LoRA filename in the ComfyUI loras dir")
     ap.add_argument("--lora-strength", type=float, default=1.0)
+    ap.add_argument("--sage", nargs="?", const="auto", default=None,
+                    help="insert the Krea2SageAttention node (our override, no KJNodes). Bare --sage = "
+                         "'auto' (sm89 -> fp8_cuda++); or pass a mode (fp8_cuda++, fp16_triton, ...). "
+                         "Omit for the plain-SDPA baseline. Run both arms at the same seed for the A/B.")
     ap.add_argument("--server", default="http://127.0.0.1:8188")
     a = ap.parse_args()
 
@@ -122,10 +211,12 @@ def main():
                     steps=steps, cfg=cfg, seed=a.seed, width=a.width, height=a.height,
                     sampler=a.sampler, scheduler=a.scheduler,
                     base_shift=a.base_shift, max_shift=a.max_shift,
-                    lora=a.lora, lora_strength=a.lora_strength)
+                    lora=a.lora, lora_strength=a.lora_strength, sage=a.sage)
+    t0 = time.perf_counter()
     ok = run(g, a.out, server=a.server)
+    elapsed = time.perf_counter() - t0
     print(f"{'saved' if ok else 'FAILED'} {a.out}  (preset={a.preset} steps={steps} cfg={cfg} "
-          f"{a.width}x{a.height} seed={a.seed})")
+          f"{a.width}x{a.height} seed={a.seed} sage={a.sage or 'off'} wall={elapsed:.2f}s)")
 
 
 if __name__ == "__main__":

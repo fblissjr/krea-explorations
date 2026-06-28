@@ -15,11 +15,14 @@ With the toolkit you can:
 - **isolate a single encoder layer** to see what it contributes to the image,
 - **measure and dial any concept axis** — compute a difference-of-means direction from an A/B prompt pair and
   **amplify / inject / remove** it in the conditioning (the *Krea 2 Concept Inject* node +
-  `concept_direction.py`; see [Concept directions](#concept-directions-measure-and-dial-any-concept-axis)), and
-- **recompute the layer-fusion attention maps** from the open weights.
+  `concept_direction.py`; see [Concept directions](#concept-directions-measure-and-dial-any-concept-axis)),
+- **recompute the layer-fusion attention maps** from the open weights, and
+- **split the denoise across two models** — RAW for the high-noise steps (with CFG), Turbo for the finish, on
+  one shared schedule: seed/compositional diversity at near-Turbo speed plus clean CFG headroom (see
+  [Two-sampler split](docs/two_sampler_split.md)).
 
-Everything runs on CPU and edits the checkpoint in place — one tensor in a 26 GB model in seconds, without
-loading the full thing.
+The editing/measurement tools run on CPU in place — one tensor in a 26 GB model in seconds, without loading the
+full thing; the generation-side levers (concept inject, the two-sampler split) run in ComfyUI.
 
 ## How Krea 2's text conditioning works
 
@@ -187,10 +190,11 @@ approximation.
 | `projector` | `read_projector` / `scale_projector` — read and per-layer-scale the learned `txtfusion.projector`. |
 | `projector_lora` | Emit tiny `txtfusion.projector.diff` LoRAs for arbitrary per-layer gains (`diff = orig*(gain-1)`, so strength 1 = exact gains). `make_band_isolation_loras` emits 12 single-layer probes. Loads via the stock `LoraLoaderModelOnly` — **no custom node required**, ~300 bytes each. |
 | `comfy_nodes` | A ComfyUI node, **Krea 2 Projector Rebalance** (`conditioning/Krea2`), that reweights the projector live via the ModelPatcher (`preset` `uniform`/`custom`, `strength`, `per_layer_weights`, `solo_band` to isolate one layer). Restart ComfyUI to load it. |
-| `krea2_concept_inject_node` + `scripts/concept_direction.py` | A ComfyUI node, **Krea 2 Concept Inject** (`conditioning/Krea2`), that amplifies / injects / project-outs a single measured concept direction on the conditioning (a targeted generalization of the rebalance lever — the bypass, but aimed), plus a CLI + `contrast_directions.pooled_direction` that measure the direction from an A/B prompt pair. See [`docs/concept_directions.md`](docs/concept_directions.md). |
+| `krea2_concept_inject_node` + `scripts/concept_direction.py` | A ComfyUI node, **Krea 2 Concept Inject** (`conditioning/Krea2`), that amplifies / injects / project-outs a single measured concept direction on the conditioning (a targeted generalization of the rebalance lever — a deep-band magnitude boost, aimed), plus a CLI + `contrast_directions.pooled_direction` that measure the direction from an A/B prompt pair. See [`docs/concept_directions.md`](docs/concept_directions.md). |
 | `cli` | `krea2-proj inspect \| lora \| solo`. |
 | `attention_stats` + `scripts/extract_attention.py` | Pure-numpy summarization helpers, plus a script that loads the Krea 2 CLIP and the DiT's `txtfusion` weights (CPU) and recomputes the 12×12 layer-fusion attention maps (head-averaged, per-head, cross-prompt). |
 | `image_grid` | Reusable labeled contact-sheet builder (`build_contact_sheet`) for comparison figures — rows × cols of image paths / `PIL.Image` / `None` (missing cells become placeholders). |
+| `scripts/generate.build_split_graph` | Two-sampler split graph: a high-noise model for steps `[0, boundary)` then a low-noise model for the finish, on one shared schedule (leftover-noise handoff). RAW→Turbo gives seed/compositional diversity at near-Turbo speed + clean CFG headroom (not negative control). See [`docs/two_sampler_split.md`](docs/two_sampler_split.md). |
 | `krea2_untwist_node` (+ `rope_untwist`, `krea2_untwist_attn`) | **Experimental.** A ComfyUI node, **Krea 2 Untwist Style Reference** (`conditioning/Krea2`), for **training-free reference-image style transfer** via untwisting-RoPE shared attention — a separate *positional-axis* lever (the rest of this toolkit edits the *feature/conditioning axis*). Built for Krea 2's real `[32,48,48]` RoPE. v1 uses renoise-to-sigma reference injection (no RF-inversion); style transfer needs a **low `high_scale`** (the high default copies the reference). Restart ComfyUI to load it. |
 
 ## License
