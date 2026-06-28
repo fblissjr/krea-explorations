@@ -1,6 +1,6 @@
 # CLAUDE.md — krea2-explorations
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 Project memory for this repo. Global conventions (uv, TDD, path-privacy, docs, no emojis) are in the
 user-level CLAUDE.md and still apply; this file holds only what's specific to this repo.
@@ -16,7 +16,10 @@ lead with falsifications, not "discoveries".
 Two ways to steer Krea 2's conditioning, both in scope here:
 
 1. **Weight/activation edits** — the projector rebalance + single-layer isolation tooling (the core package:
-   `projector`, `projector_lora`, `comfy_nodes`). Edits weights, stays in-distribution via downstream RMSNorm.
+   `projector`, `projector_lora`, `comfy_nodes`), plus the **concept-direction inject** node
+   (`krea2_concept_inject_node` + `scripts/concept_direction.py`): measure a difference-of-means axis from an
+   A/B prompt pair and amplify/inject/project-out it on the conditioning. Edits weights or activations, stays
+   in-distribution via downstream RMSNorm. Guide: `docs/concept_directions.md`.
 2. **Prompt-side steering** — a `<think>` block / system prompt / prefix written into the text the encoder
    sees. Inject custom spans via the **tokenizer skip-template route**: pass a full `<|im_start|>…` string as
    the prompt and the qwen3vl tokenizer emits it verbatim, so no ComfyUI/pipeline edit is needed. It behaves
@@ -25,6 +28,18 @@ Two ways to steer Krea 2's conditioning, both in scope here:
 
 Public/tracked files stay benign in name and content; sensitive prompts, data, and any
 sensitive-referencing filenames live only in gitignored `internal/` and `data/`.
+
+## Public-facing docs — keep in sync (these are the front door)
+
+When you add or change a **public tool** (a ComfyUI node, a `scripts/` CLI, or a package capability), update
+the user-facing docs in the SAME change — they're what people actually use:
+- `README.md`: the "With the toolkit you can" bullets, a short TL;DR section, and the **Components** table.
+- `docs/`: the relevant guide (e.g. `docs/concept_directions.md`) — add one if none fits; cross-link
+  `docs/findings.md`.
+- Bump the `Last updated:` date on every doc you touch.
+
+Keep all public examples benign (generic prompts/axes — expression, style, pose); the explicit applications
+stay in gitignored `internal/`. Don't let README/docs drift behind the code.
 
 ## Comparison grids / figures — use the shared util
 

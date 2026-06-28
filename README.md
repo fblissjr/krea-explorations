@@ -1,6 +1,6 @@
 # krea2-explorations
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 A study of **how Krea 2 combines its text-encoder layers** (its "multilayer feature aggregation") and how that
 conditioning can be **steered** — plus a small, dependency-light toolkit to reproduce the measurements. The
@@ -12,7 +12,10 @@ With the toolkit you can:
 - read and **per-layer-scale the learned projector** that fuses the layers,
 - emit **tiny projector LoRAs** for arbitrary per-layer gains (load with the stock LoRA loader, no custom
   node, ~300 bytes each),
-- **isolate a single encoder layer** to see what it contributes to the image, and
+- **isolate a single encoder layer** to see what it contributes to the image,
+- **measure and dial any concept axis** — compute a difference-of-means direction from an A/B prompt pair and
+  **amplify / inject / remove** it in the conditioning (the *Krea 2 Concept Inject* node +
+  `concept_direction.py`; see [Concept directions](#concept-directions-measure-and-dial-any-concept-axis)), and
 - **recompute the layer-fusion attention maps** from the open weights.
 
 Everything runs on CPU and edits the checkpoint in place — one tensor in a 26 GB model in seconds, without
@@ -123,6 +126,23 @@ In ComfyUI, either load an emitted `.diff` file with the stock **LoraLoaderModel
 exactly; `solo_band` (or a `solo/` LoRA at strength 1) isolates a single selected layer so you can see what
 it contributes.
 
+## Concept directions (measure and dial any concept axis)
+
+A targeted generalization of the projector-rebalance lever: instead of scaling whole layers, **measure one
+concept direction** from an A/B prompt pair and **amplify / inject / project-out** it in the conditioning.
+`amplify` boosts only the component already present, so it can't conjure an absent concept — which also makes
+it a quick test of whether the axis is represented at all. Works on any axis the encoder represents
+(expression, style, lighting, pose, an attribute).
+
+```bash
+# measure directions from A/B prompt pairs -> one <name>.npy each (CPU)
+uv run --active python scripts/concept_direction.py examples/concept_directions.json --out <comfyui_models>/concept_dirs
+```
+
+Then drop the **Krea 2 Concept Inject** node (`conditioning/Krea2`) between text-encode and sampler, point
+`direction_path` at the `.npy`, and pick a mode + scale (`amplify` 1.0 ≈ the bypass LoRA's ×2). Full guide,
+modes, and the math: [`docs/concept_directions.md`](docs/concept_directions.md).
+
 ## Reverse-caption probing
 
 We also use a reverse-caption loop (image → dense caption from a vision LLM → regenerate) to derive dense
@@ -162,6 +182,7 @@ approximation.
 | `projector` | `read_projector` / `scale_projector` — read and per-layer-scale the learned `txtfusion.projector`. |
 | `projector_lora` | Emit tiny `txtfusion.projector.diff` LoRAs for arbitrary per-layer gains (`diff = orig*(gain-1)`, so strength 1 = exact gains). `make_band_isolation_loras` emits 12 single-layer probes. Loads via the stock `LoraLoaderModelOnly` — **no custom node required**, ~300 bytes each. |
 | `comfy_nodes` | A ComfyUI node, **Krea 2 Projector Rebalance** (`conditioning/Krea2`), that reweights the projector live via the ModelPatcher (`preset` `uniform`/`custom`, `strength`, `per_layer_weights`, `solo_band` to isolate one layer). Restart ComfyUI to load it. |
+| `krea2_concept_inject_node` + `scripts/concept_direction.py` | A ComfyUI node, **Krea 2 Concept Inject** (`conditioning/Krea2`), that amplifies / injects / project-outs a single measured concept direction on the conditioning (a targeted generalization of the rebalance lever — the bypass, but aimed), plus a CLI + `contrast_directions.pooled_direction` that measure the direction from an A/B prompt pair. See [`docs/concept_directions.md`](docs/concept_directions.md). |
 | `cli` | `krea2-proj inspect \| lora \| solo`. |
 | `attention_stats` + `scripts/extract_attention.py` | Pure-numpy summarization helpers, plus a script that loads the Krea 2 CLIP and the DiT's `txtfusion` weights (CPU) and recomputes the 12×12 layer-fusion attention maps (head-averaged, per-head, cross-prompt). |
 | `image_grid` | Reusable labeled contact-sheet builder (`build_contact_sheet`) for comparison figures — rows × cols of image paths / `PIL.Image` / `None` (missing cells become placeholders). |
