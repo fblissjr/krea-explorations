@@ -28,8 +28,8 @@ committed tooling); grids are gitignored under `data/`, the figures here are the
 
 *Rows = strength; cols = seed (42 / 123 / 7); 8 steps, cfg 1.*
 
-- **Below ~0.8 the image is soft/washed** — RAW (0.0) at 8 steps is unusable (under-denoised), 0.5 is hazy.
-  Low strength needs *more steps and/or cfg>1* to recover (see §2).
+- **Below ~0.8 the image is soft/washed at cfg 1** — RAW (0.0) at 8 steps is unusable (under-denoised), 0.5
+  is hazy. The fix is *cfg>1, not more steps* (§4): at cfg ≥ 2.5, 0.5–0.7 is already sharp at 8 steps.
 - **~0.8–1.2 (Turbo −0.2 … +0.2) is the usable band** and matches the community's "nice low values":
   - **0.8 / 0.9** (Turbo −0.2 / −0.1): sharp, slightly **softer / warmer / more open** than Turbo.
   - **1.0**: baseline Turbo — sharpest contrast, but same-seed compositions are near-identical (the
@@ -72,6 +72,21 @@ so any column-wise difference is the negative branch alone.*
   words), so a short negative can't win. Whether the negative steers cleanly at partial-distill is still
   open — needs a target that is **not** in the positive (see follow-ups).
 
+## 4. The recovery lever for low strength is cfg, not steps
+
+![Strength x steps at cfg 2.5: rows = strength 0.5 / 0.7 / 1.0, cols = steps 8 / 12 / 16 / 20 / 28.](figures/turbo_lora_strength_steps.png)
+
+*Rows = strength (RAW frame); cols = steps (8 / 12 / 16 / 20 / 28); cfg 2.5, fixed seed.*
+
+I expected de-distilled strengths to need more steps to reach Turbo sharpness. They don't — **at cfg 2.5,
+strength 0.5 and 0.7 are already sharp at 8 steps**, and 12→28 steps add only marginal refinement, not a
+quality jump. The softness at strength 0.5 in §1 was a **cfg-1 artifact, not a step deficiency**: turning
+cfg up (not steps) recovers detail at lower strength.
+
+Practical consequence: **`strength ~0.5–0.7, cfg ~2.5, 8 steps`** gives a sharp image that *also* has cfg /
+negative-prompt headroom — the flexibility of a less-distilled model at near-Turbo speed, no extra steps.
+(Caveat: one prompt/seed; a step-dependent gain could still show on finer-detail prompts.)
+
 ## Practical recipe
 
 | Goal | Strength (RAW / Turbo frame) | steps / cfg |
@@ -79,14 +94,13 @@ so any column-wise difference is the negative branch alone.*
 | Default fast + sharp | 1.0 / Turbo | 8 / 1 |
 | Softer, warmer, a little more open | 0.8–0.9 / Turbo −0.2…−0.1 | 8 / 1 |
 | Punchier, more saturated | 1.2 / Turbo +0.2 | 8 / 1 |
-| Need cfg>1 or negative prompts | ~0.5 / Turbo −0.5 | ~16 / 2.5–4 |
-| Max seed diversity (quality cost) | 0.0–0.5 / Turbo −1.0…−0.5 | needs cfg>1 + more steps |
+| Need cfg>1 or negative prompts | ~0.5–0.7 / Turbo −0.5…−0.3 | **8** / 2.5–4 (steps don't help; cfg does) |
+| Max seed diversity (quality cost) | 0.0–0.5 / Turbo −1.0…−0.5 | needs cfg>1 (8 steps OK at cfg ≥ 2.5) |
 
 ## Open follow-ups
 
-- **Strength × steps/sigmas** is unmapped: each strength below ~0.8 likely has a different
-  steps-to-recover-quality cost. The §1 grid fixes 8 steps; a strength × {8,12,16,20,28} grid would find,
-  e.g., "0.5 at 20 steps ≈ Turbo quality with more flexibility?".
+- **Sigmas / scheduler** (not step *count*) are still unmapped — §4 answered steps (cfg recovers quality,
+  steps barely move it), but a custom sigma schedule or a different scheduler at low strength is untested.
 - **Clean negative test**: repeat §3 with a target absent from the positive (or an empty-vs-strong negative
   on a washed-out low-strength/low-cfg image where there's headroom to see).
 - **bf16 / other prompts**: fp8 RAW grained less here than an earlier note warned; re-check on bf16 and on
