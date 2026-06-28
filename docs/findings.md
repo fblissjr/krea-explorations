@@ -184,9 +184,40 @@ verified). Untested twin: does a system-turn prompt steer *at all* through the i
 follow-up (extract a named direction from a model pair, check whether the projector passes it, then steer with
 ±it) would turn this from "steering works" into "steer along a *named* axis on purpose".
 
+## The Turbo-LoRA strength dial — a de-distillation lever (2026-06-28)
+
+All the levers above edit conditioning. This one edits the **DiT** path, and it's a clean continuous dial.
+Krea 2's Turbo LoRA *is* the distillation delta (`Turbo ≈ RAW + 1.0·delta`), so its strength is a
+**de-distillation knob** and the two checkpoints are the same model at two points on it:
+
+> **`RAW + s·LoRA ≡ Turbo + (s−1)·LoRA`** — `s`=1.0 is Turbo, `s`=0.0 is RAW.
+
+Characterized on one dense prompt (`examples/test_prompts/nightclub.txt`), few seeds, fp8. **Low–medium
+confidence** (visual read, n≈1 prompt). Full write-up + figures: [`turbo_lora_strength.md`](turbo_lora_strength.md).
+
+1. **At Turbo's native config (8 steps, cfg 1) the dial is a quality ramp**, and the **usable band is
+   ~0.8–1.2** — exactly the community's "nice low values" (Turbo frame −0.2…+0.2). 0.8–0.9 is softer/warmer
+   than Turbo; 1.2 is punchier/more saturated; below ~0.8 it goes soft *at cfg 1* (recoverable — see 3).
+2. **Lower strength restores cfg>1 / negative-prompt headroom.** Turbo (1.0) burns out above cfg ~2.5
+   (blown highlights); 0.5–0.7 and RAW tolerate cfg 4. RAW (0.0) actually *requires* cfg>1. So **CFG
+   headroom grows as strength drops** — a de-distilled run wants `strength ~0.5, cfg ~2.5–4`.
+3. **The recovery lever for low-strength softness is cfg, not steps.** I expected de-distilled strengths to
+   need more steps; they don't — at cfg 2.5, strength 0.5/0.7 are already sharp at **8 steps**, and 12→28
+   steps add only marginal refinement. The §1 softness was a cfg-1 artifact. So `strength 0.5–0.7, cfg 2.5,
+   8 steps` buys cfg/negative flexibility at near-Turbo speed.
+4. **The negative branch is active but weak.** At cfg>1 the uncond path is live and perturbs the image, but
+   targeted suppression failed (an anti-lamp negative never removed the lamp) — confounded by a target that
+   was over-described in the positive. Whether it steers *cleanly* at partial-distill is still open.
+5. **The sigma schedule is a weak lever here.** At strength 0.5 / cfg 2.5 / 8 steps, scheduler family barely
+   matters (`simple`/`normal`/`sgm_uniform` near-identical); only **`beta`** reframes (composition reroll)
+   and only **`mu3.0`** brightens/blooms. The strength and cfg dials dominate the schedule shape.
+
+**Reframe.** "RAW vs Turbo" is a false binary — they're endpoints of one dial, and the interesting regime is
+*between* them: a partial de-distill (strength ~0.5–0.7) that keeps near-Turbo speed (8 steps) while
+recovering the CFG/negative-prompt guidance that distillation removed. The cost is one extra knob (cfg ~2.5).
+
 ---
 
-**See also:** [`turbo_lora_strength.md`](turbo_lora_strength.md) — the **Turbo-LoRA strength dial** as a
-de-distillation lever (`RAW + s·LoRA ≡ Turbo + (s−1)·LoRA`): a quality ramp at native config with a usable
-~0.8–1.2 band (the community "low values"), cfg>1 / negative-prompt headroom restored as strength drops, and
-the negative branch's (weak) behavior. Low–medium confidence (one prompt, few seeds).
+**See also:** [`turbo_lora_strength.md`](turbo_lora_strength.md) — the full dial characterization with dial
+table, practical recipe, and the five probe figures (strength · cfg headroom · negative branch · steps ·
+scheduler).

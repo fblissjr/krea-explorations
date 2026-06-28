@@ -87,6 +87,27 @@ Practical consequence: **`strength ~0.5–0.7, cfg ~2.5, 8 steps`** gives a shar
 negative-prompt headroom — the flexibility of a less-distilled model at near-Turbo speed, no extra steps.
 (Caveat: one prompt/seed; a step-dependent gain could still show on finer-detail prompts.)
 
+## 5. The sigma *schedule* (scheduler + flow shift) is a weak lever here
+
+![Scheduler x shift at the de-distilled regime: rows = scheduler (simple / normal / sgm_uniform / beta), cols = flow shift (default / mu1.0 / mu1.15 / mu3.0).](figures/turbo_lora_scheduler.png)
+
+*Rows = scheduler; cols = flow shift mu (default 0.5/1.15 · mu1.0 · mu1.15 · mu3.0); strength 0.5, cfg 2.5,
+8 steps, fixed seed — so any cell difference is the schedule *shape* alone.*
+
+§4 answered step *count* (cfg recovers quality, steps barely move it). This closes the other schedule axis —
+where the sigmas land, not how many — at the de-distilled regime (strength 0.5, cfg 2.5, 8 steps):
+
+- **Scheduler family barely matters.** `simple` / `normal` / `sgm_uniform` are near-identical — same
+  composition, same sharpness. **`beta` is the one outlier**: a distinct reframing (figures lean in, tighter
+  crop, brighter/more saturated). So among the common schedulers, only `beta` is a real knob, and it changes
+  *composition*, not quality.
+- **Flow shift mu only moves things at the extreme.** `default` / `mu1.0` / `mu1.15` are near-identical;
+  **`mu3.0` brightens and blooms** (more time spent at high noise → softer highlights, lifted exposure). So
+  the de-distilled regime is *not* especially sensitive to mu until you push it far.
+- **Takeaway:** at strength 0.5 / cfg 2.5 / 8 steps the schedule shape is a **weak** lever — the strength and
+  cfg dials (§1–§4) dominate. Reach for `beta` if you want a composition reroll, or `mu3.0` for a brighter/
+  softer look; otherwise the default schedule is fine. **This closes the sigmas/scheduler follow-up.**
+
 ## Practical recipe
 
 | Goal | Strength (RAW / Turbo frame) | steps / cfg |
@@ -99,8 +120,6 @@ negative-prompt headroom — the flexibility of a less-distilled model at near-T
 
 ## Open follow-ups
 
-- **Sigmas / scheduler** (not step *count*) are still unmapped — §4 answered steps (cfg recovers quality,
-  steps barely move it), but a custom sigma schedule or a different scheduler at low strength is untested.
 - **Clean negative test**: repeat §3 with a target absent from the positive (or an empty-vs-strong negative
   on a washed-out low-strength/low-cfg image where there's headroom to see).
 - **bf16 / other prompts**: fp8 RAW grained less here than an earlier note warned; re-check on bf16 and on
