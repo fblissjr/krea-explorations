@@ -100,12 +100,32 @@ from .krea2_concept_inject_node import (
     NODE_CLASS_MAPPINGS as _INJECT_NODES,
     NODE_DISPLAY_NAME_MAPPINGS as _INJECT_NAMES,
 )
+from .krea2_dit_capture_node import (
+    NODE_CLASS_MAPPINGS as _CAPTURE_NODES,
+    NODE_DISPLAY_NAME_MAPPINGS as _CAPTURE_NAMES,
+)
+from .krea2_sage_node import (
+    NODE_CLASS_MAPPINGS as _SAGE_NODES,
+    NODE_DISPLAY_NAME_MAPPINGS as _SAGE_NAMES,
+)
+from .krea2_attn_bias_node import (
+    NODE_CLASS_MAPPINGS as _ATTNBIAS_NODES,
+    NODE_DISPLAY_NAME_MAPPINGS as _ATTNBIAS_NAMES,
+)
+from .krea2_dit_residual_steer_node import (
+    NODE_CLASS_MAPPINGS as _RESID_NODES,
+    NODE_DISPLAY_NAME_MAPPINGS as _RESID_NAMES,
+)
 
 NODE_CLASS_MAPPINGS = {
-    "Krea2ProjectorRebalance": Krea2ProjectorRebalance, **_UNTWIST_NODES, **_KEEPSYS_NODES, **_INJECT_NODES,
+    "Krea2ProjectorRebalance": Krea2ProjectorRebalance,
+    **_UNTWIST_NODES, **_KEEPSYS_NODES, **_INJECT_NODES, **_CAPTURE_NODES, **_SAGE_NODES, **_ATTNBIAS_NODES,
+    **_RESID_NODES,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Krea2ProjectorRebalance": "Krea 2 Projector Rebalance", **_UNTWIST_NAMES, **_KEEPSYS_NAMES, **_INJECT_NAMES,
+    "Krea2ProjectorRebalance": "Krea 2 Projector Rebalance",
+    **_UNTWIST_NAMES, **_KEEPSYS_NAMES, **_INJECT_NAMES, **_CAPTURE_NAMES, **_SAGE_NAMES, **_ATTNBIAS_NAMES,
+    **_RESID_NAMES,
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "Krea2ProjectorRebalance", "SELECT_LAYERS"]
