@@ -12,8 +12,8 @@ single measured concept direction d (a 12x2560 difference-of-means axis, flatten
   subtract    cond -= scale * d̂
   project_out cond -= (cond . d̂) d̂            -- remove the concept entirely.
 
-Direction is loaded from a .npy/.npz (key 'd') of shape (12,2560) or (30720,) or (2560,) (broadcast to all
-12 bands). ``comfy``/torch imported lazily so the math stays unit-testable in the project venv.
+Direction is loaded from a .npy/.npz (key 'd') of shape (12,2560) or its (30720,) flatten. ``comfy``/torch
+imported lazily so the math stays unit-testable in the project venv.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def apply_direction(cond, d, scale, mode, normalize=True):
 
 
 def _load_direction(path, feat_dim, bands, torch, np):
-    """Load (12,2560)/(30720,)/(2560,) -> flat (feat_dim,) torch float vector, layer-major."""
+    """Load (bands, band_dim) or its (feat_dim,) flatten -> flat (feat_dim,) torch float vector, layer-major."""
     if not path:
         raise ValueError("Krea2ConceptInject: 'direction_path' is empty -- point it at a .npy/.npz concept "
                          "direction (make one with scripts/concept_direction.py).")
@@ -50,10 +50,8 @@ def _load_direction(path, feat_dim, bands, torch, np):
     band_dim = feat_dim // bands
     if arr.ndim == 2 and arr.shape == (bands, band_dim):
         arr = arr.reshape(-1)                       # layer-major flatten -> matches encoder
-    elif arr.ndim == 1 and arr.shape[0] == band_dim:
-        arr = np.tile(arr, bands)                   # single-layer direction -> broadcast to all bands
     elif not (arr.ndim == 1 and arr.shape[0] == feat_dim):
-        raise ValueError(f"direction shape {arr.shape} not in {{({bands},{band_dim}),({feat_dim},),({band_dim},)}}")
+        raise ValueError(f"direction shape {arr.shape} not in {{({bands},{band_dim}),({feat_dim},)}}")
     return torch.from_numpy(arr)
 
 
@@ -134,7 +132,7 @@ class Krea2ConceptInject:
                 "direction": ("KREA2_CONCEPT_DIR", {"tooltip": "direction from Krea 2 Concept Direction "
                               "(takes priority over direction_path)."}),
                 "direction_path": ("STRING", {"default": "", "tooltip": ".npy/.npz concept direction "
-                                   "(12x2560 / 30720 / 2560); used only if no 'direction' is connected."}),
+                                   "(12x2560 or 30720); used only if no 'direction' is connected."}),
                 "normalize": ("BOOLEAN", {"default": True, "tooltip": "unit-normalize the direction first "
                               "(scale in unit terms). Ignored by amplify/project_out (always use d̂)."}),
             },

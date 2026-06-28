@@ -76,6 +76,20 @@ def test_load_direction_rejects_empty_path():
     raise AssertionError("expected ValueError for empty direction_path")
 
 
+def test_load_direction_rejects_single_band_shape(tmp_path):
+    # the (2560,) single-band broadcast was removed (nothing emits it) -> reject before torch is touched
+    from krea2_explorations.krea2_concept_inject_node import _load_direction
+
+    p = tmp_path / "d.npy"
+    np.save(p, np.zeros(2560, dtype="float32"))
+    try:
+        _load_direction(str(p), 30720, 12, None, np)  # torch unused: rejected before torch.from_numpy
+    except ValueError as e:
+        assert "shape" in str(e)
+        return
+    raise AssertionError("expected ValueError for a (2560,) single-band direction")
+
+
 # --- in-graph direction builder (Krea2ConceptDirection): the pooling/diff math, numpy-tested ---
 
 def test_pool_cond_vec_means_over_all_but_last_axis():
