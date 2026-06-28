@@ -2,7 +2,7 @@
 
 Last updated: 2026-06-28
 
-A study of **how Krea 2 combines its text-encoder layers** (its "multilayer feature aggregation") and how that
+Research repo **how Krea 2 combines its text-encoder layers** (its "multilayer feature aggregation") and how that
 conditioning can be **steered** — plus a small, dependency-light toolkit to reproduce the measurements. The
 most practically useful result: the conditioning is steerable *from the prompt side* (a `<think>` block acts
 as a steering vector) — see [What we've found](#what-weve-found).
