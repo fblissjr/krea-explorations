@@ -10,7 +10,3 @@ and `docs/findings.md`).
 - `mushroom_qwen_caption.txt` — Qwen3.7-Plus caption of the same image.
 - `geisha.txt` — caption of a cyberpunk-anime android-geisha image (text-heavy; useful for the L14/text probe).
 - `nightclub.txt` — film-still of a warm-red restaurant/nightclub scene (multi-figure; composition-heavy).
-
-Optional `<name>.think.txt` sidecar: a plain reasoning block (no `<think>` tags, no `<details>` wrapper) that
-harnesses wrap as `<think>…</think>` and route through the `Krea2EncodeKeepSystem` node. `nightclub.think.txt`
-is the reference example.
