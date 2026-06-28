@@ -6,7 +6,7 @@ the wrapper's behavior without needing comfy/torch (the node imports comfy lazil
 project venv.
 """
 
-from krea2_explorations.krea2_keep_system_node import _ATTR, _wrap
+from krea2_explorations.krea2_keep_system_node import _ATTR, _HOOK_FLAG, _install, _wrap
 
 
 def _orig(self, token_weight_pairs, template_end=-1):
@@ -62,3 +62,23 @@ def test_explicit_arg_wins_over_attribute():
 def test_wrapper_exposes_original():
     w = _wrap(_orig)
     assert w.__wrapped__ is _orig
+
+
+def test_install_is_idempotent():
+    # _install wraps once and flags the fn; a second call must be a no-op (no double-wrap).
+    class Fake:
+        def encode_token_weights(self, token_weight_pairs, template_end=-1):
+            return template_end
+
+    _install(Fake)
+    first = Fake.encode_token_weights
+    assert getattr(first, _HOOK_FLAG, False) is True
+
+    _install(Fake)  # second install -> same wrapped fn, not re-wrapped
+    assert Fake.encode_token_weights is first
+
+    # and the installed hook still honors the per-instance attribute
+    f = Fake()
+    assert f.encode_token_weights("tok") == -1
+    setattr(f, _ATTR, 0)
+    assert f.encode_token_weights("tok") == 0

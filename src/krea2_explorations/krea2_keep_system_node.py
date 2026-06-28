@@ -7,11 +7,15 @@ before the DiT and can only influence the result indirectly (the surviving token
 That method already takes a ``template_end`` argument that, when set to anything other than ``-1``, skips the
 auto-strip and cuts exactly there (``template_end=0`` keeps the whole sequence). We feed it through a tiny,
 reversible *per-instance* hook so a system prompt becomes a **direct** conditioning write-point — a steering
-vector you can drive from inside ComfyUI. No re-tokenization, no per-mode drop-count tables, no global state:
-just the existing escape hatch, exposed as a node.
+vector you can drive from inside ComfyUI. No re-tokenization, no per-mode drop tables — just the existing
+escape hatch, exposed as a node.
 
-``comfy`` is imported lazily (inside ``_ensure_patched``) so this module stays importable/testable without
-the ComfyUI runtime.
+State note: the only module-global is a one-time "patch installed" flag. The per-encode ``template_end``
+override lives on the model *instance* and is set/restored around each encode, so it is leak-free under
+ComfyUI's sequential execution — stated explicitly because ``CLIP.clone()`` shares one ``cond_stage_model``,
+so a (hypothetical) concurrent encode during the set→encode→restore window would observe it.
+
+``comfy`` is imported lazily so this module stays importable/testable without the ComfyUI runtime.
 """
 
 from __future__ import annotations
@@ -43,6 +47,15 @@ def _wrap(orig):
     return encode_token_weights
 
 
+def _install(cls):
+    """Install the hook on ``cls.encode_token_weights`` once (idempotent). Pure of comfy -> unit-testable."""
+    if not getattr(cls.encode_token_weights, _HOOK_FLAG, False):
+        wrapped = _wrap(cls.encode_token_weights)
+        setattr(wrapped, _HOOK_FLAG, True)
+        cls.encode_token_weights = wrapped
+    return cls
+
+
 def _ensure_patched():
     """Idempotently install the hook on ``Krea2TEModel.encode_token_weights`` (lazy; needs comfy)."""
     global _PATCHED
@@ -50,11 +63,7 @@ def _ensure_patched():
         return
     import comfy.text_encoders.krea2 as krea2
 
-    cls = krea2.Krea2TEModel
-    if not getattr(cls.encode_token_weights, _HOOK_FLAG, False):
-        wrapped = _wrap(cls.encode_token_weights)
-        setattr(wrapped, _HOOK_FLAG, True)
-        cls.encode_token_weights = wrapped
+    _install(krea2.Krea2TEModel)
     _PATCHED = True
 
 
@@ -82,8 +91,10 @@ class Krea2EncodeKeepSystem:
             "optional": {
                 "template_end": ("INT", {
                     "default": 0, "min": 0, "max": 64,
-                    "tooltip": "Leading conditioning tokens to drop. 0 = keep everything incl. the system "
-                               "turn. Comfy's default auto-strips to the user turn (use this node to override).",
+                    "tooltip": "Leading conditioning tokens to drop. 0 = keep everything incl. the literal "
+                               "<|im_start|>system role-markers (most off-distribution). ~3 drops just "
+                               "'<|im_start|>system\\n' so you keep the system message *content* without the "
+                               "scaffolding. Comfy's default auto-strips the whole system turn.",
                 }),
             },
         }
@@ -94,22 +105,33 @@ class Krea2EncodeKeepSystem:
     CATEGORY = "conditioning/Krea2"
     DESCRIPTION = ("Encode Krea 2 text conditioning WITHOUT stripping the system turn, so a system-role "
                    "prompt becomes a direct conditioning write-point (steering vector). Drop-in for "
-                   "CLIPTextEncode.")
+                   "CLIPTextEncode. Note: template_end=0 also keeps the literal <|im_start|>system "
+                   "role-markers (sequence-level off-distribution); use ~3 to keep only the system content.")
 
     def encode(self, clip, text, template_end=0):
         _ensure_patched()
+        import comfy.text_encoders.krea2 as krea2
+
+        model = getattr(clip, "cond_stage_model", None)
+        if not isinstance(model, krea2.Krea2TEModel):
+            raise RuntimeError(
+                "Krea2EncodeKeepSystem expects a Krea 2 CLIP (Krea2TEModel); got "
+                f"{type(model).__name__}. Load the Krea 2 text encoder, or use CLIPTextEncode for other models."
+            )
         tokens = clip.tokenize(text)
-        model = clip.cond_stage_model
         prev = getattr(model, _ATTR, None)
         setattr(model, _ATTR, int(template_end))
         try:
-            cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
+            # same path as CLIPTextEncode (prompt scheduling + hooks); our per-instance hook fires inside
+            # encode_token_weights either way.
+            cond = clip.encode_from_tokens_scheduled(tokens)
         finally:
-            setattr(model, _ATTR, prev)  # reversible: never leaks to other encodes/CLIPs
-        return ([[cond, {"pooled_output": pooled}]],)
+            setattr(model, _ATTR, prev)  # restored each call; leak-free under ComfyUI's sequential exec
+        return (cond,)
 
 
 NODE_CLASS_MAPPINGS = {"Krea2EncodeKeepSystem": Krea2EncodeKeepSystem}
 NODE_DISPLAY_NAME_MAPPINGS = {"Krea2EncodeKeepSystem": "Krea 2 Encode (keep system turn)"}
 
-__all__ = ["Krea2EncodeKeepSystem", "NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "_wrap", "_ATTR"]
+__all__ = ["Krea2EncodeKeepSystem", "NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS",
+           "_wrap", "_install", "_ATTR", "_HOOK_FLAG"]
