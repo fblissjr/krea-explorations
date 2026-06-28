@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Tools for understanding and surgically editing Krea2 text conditioning (per-layer projector edits, checkpoint analysis)."
 readme = "README.md"
 authors = [
-    { name = "Fred Bliss", email = "11861687+fblissjr@users.noreply.github.com" }
+    { name = "fblissjr", email = "11861687+fblissjr@users.noreply.github.com" }
 ]
 requires-python = ">=3.13"
 dependencies = [

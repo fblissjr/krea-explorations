@@ -1,0 +1,6 @@
+{
+  "include": ["src", "tests"],
+  "exclude": ["internal", "coderef", "data", "**/__pycache__", ".venv"],
+  "extraPaths": ["src"],
+  "reportMissingImports": "warning"
+}
