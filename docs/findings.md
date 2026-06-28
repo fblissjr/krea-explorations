@@ -1,6 +1,6 @@
 # Findings TLDR — Krea2 selected-layer probes
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 Basis: solo (keep-one) + leave-one-out (drop-one) sweeps on **one prompt** (portrait), seed 42,
 Krea2 **Turbo fp8**, 8 steps euler/simple, image-level **RGB-RMS** distance. Cross-style sweeps
@@ -183,3 +183,10 @@ moves a bit more than the one attribute you aim at). The tokenization/strip fact
 verified). Untested twin: does a system-turn prompt steer *at all* through the indirect path? A labeled-axis
 follow-up (extract a named direction from a model pair, check whether the projector passes it, then steer with
 ±it) would turn this from "steering works" into "steer along a *named* axis on purpose".
+
+---
+
+**See also:** [`turbo_lora_strength.md`](turbo_lora_strength.md) — the **Turbo-LoRA strength dial** as a
+de-distillation lever (`RAW + s·LoRA ≡ Turbo + (s−1)·LoRA`): a quality ramp at native config with a usable
+~0.8–1.2 band (the community "low values"), cfg>1 / negative-prompt headroom restored as strength drops, and
+the negative branch's (weak) behavior. Low–medium confidence (one prompt, few seeds).
