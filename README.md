@@ -2,8 +2,12 @@
 
 Last updated: 2026-06-27
 
-A small, dependency-light toolkit to **inspect, edit, and explore how Krea 2 combines its text-encoder
-layers** — its "multilayer feature aggregation". With it you can:
+A study of **how Krea 2 combines its text-encoder layers** (its "multilayer feature aggregation") and how that
+conditioning can be **steered** — plus a small, dependency-light toolkit to reproduce the measurements. The
+most practically useful result: the conditioning is steerable *from the prompt side* (a `<think>` block acts
+as a steering vector) — see [What we've found](#what-weve-found).
+
+With the toolkit you can:
 
 - read and **per-layer-scale the learned projector** that fuses the layers,
 - emit **tiny projector LoRAs** for arbitrary per-layer gains (load with the stock LoRA loader, no custom
@@ -13,42 +17,6 @@ layers** — its "multilayer feature aggregation". With it you can:
 
 Everything runs on CPU and edits the checkpoint in place — one tensor in a 26 GB model in seconds, without
 loading the full thing.
-
-## Components
-
-| Module | What it does |
-|--------|--------------|
-| `safetensors_patch` | Header parse, single-tensor read, in-place byte patch, and a small-file writer — edits one tensor in a 26 GB checkpoint in seconds without loading it. |
-| `projector` | `read_projector` / `scale_projector` — read and per-layer-scale the learned `txtfusion.projector`. |
-| `projector_lora` | Emit tiny `txtfusion.projector.diff` LoRAs for arbitrary per-layer gains (`diff = orig*(gain-1)`, so strength 1 = exact gains). `make_band_isolation_loras` emits 12 single-layer probes. Loads via the stock `LoraLoaderModelOnly` — **no custom node required**, ~300 bytes each. |
-| `comfy_nodes` | A ComfyUI node, **Krea 2 Projector Rebalance** (`conditioning/Krea2`), that reweights the projector live via the ModelPatcher (`preset` `uniform`/`custom`, `strength`, `per_layer_weights`, `solo_band` to isolate one layer). Restart ComfyUI to load it. |
-| `cli` | `krea2-proj inspect \| lora \| solo`. |
-| `attention_stats` + `scripts/extract_attention.py` | Pure-numpy summarization helpers, plus a script that loads the Krea 2 CLIP and the DiT's `txtfusion` weights (CPU) and recomputes the 12×12 layer-fusion attention maps (head-averaged, per-head, cross-prompt). |
-| `image_grid` | Reusable labeled contact-sheet builder (`build_contact_sheet`) for comparison figures — rows × cols of image paths / `PIL.Image` / `None` (missing cells become placeholders). |
-| `krea2_untwist_node` (+ `rope_untwist`, `krea2_untwist_attn`) | **Experimental.** A ComfyUI node, **Krea 2 Untwist Style Reference** (`conditioning/Krea2`), for **training-free reference-image style transfer** via untwisting-RoPE shared attention — a separate *positional-axis* lever (the rest of this toolkit edits the *feature/conditioning axis*). Built for Krea 2's real `[32,48,48]` RoPE. v1 uses renoise-to-sigma reference injection (no RF-inversion); style transfer needs a **low `high_scale`** (the high default copies the reference). Restart ComfyUI to load it. |
-
-## Usage
-
-```bash
-uv run pytest
-
-# inspect the 12 learned projector weights
-uv run krea2-proj inspect <comfyui_models>/diffusion_models/krea2_turbo_bf16.safetensors
-
-# emit a projector .diff LoRA (uniform identity, or custom per-layer gains)
-uv run krea2-proj lora <ckpt> <comfyui_models>/loras/krea2_custom.safetensors --gains "1,1,1,1,1,1,1,2,1,1,1,1"
-
-# emit 12 single-layer isolation LoRAs (one per selected layer)
-uv run krea2-proj solo <ckpt> <comfyui_models>/loras/krea2_explorer/solo
-
-# recompute the layer-fusion attention maps
-uv run python scripts/extract_attention.py
-```
-
-In ComfyUI, either load an emitted `.diff` file with the stock **LoraLoaderModelOnly**, or add the
-**Krea 2 Projector Rebalance** node between your model loader and sampler. Strength 1 = the chosen gains
-exactly; `solo_band` (or a `solo/` LoRA at strength 1) isolates a single selected layer so you can see what
-it contributes.
 
 ## How Krea 2's text conditioning works
 
@@ -63,6 +31,33 @@ Editing weights (not activations) keeps the conditioning in distribution: the mo
 holds magnitude, so reweighting changes only the *direction* of the combined text vector.
 
 ## What we've found
+
+**Prompt-side steering (a `<think>` block in the assistant turn) — the most useful result.** Beyond editing
+weights, the conditioning can be steered from the *prompt side*. Turbo's distillation flattens intense
+expression; appending a short `<think>` reasoning span to the assistant turn — injected via the tokenizer's
+skip-template route (a full `<|im_start|>…` string passed as the prompt) — restores it **in-distribution**, as
+well as or better than the deep-band rebalance lever, with adherence intact. A CPU probe shows the span shifts
+the selected hidden states ~17–24% along their own dominant axis (0.86 direction consistency, energy at the
+L20/L23 hub): it behaves like a **steering vector**.
+
+![Krea 2 Turbo, same seed, four expressions across three columns — stock prompt, + a `<think>` block, and + the deep-band rebalance lever. The in-distribution `<think>` block restores the distillation-flattened intense expressions (furious, terrified) as well as or better than the weight-space rebalance lever, with prompt adherence intact.](docs/figures/think_steering_grid.png)
+
+*Same seed (#123); only the column lever changes. The `<think>` block (middle) restores Turbo's
+distillation-flattened expression in-distribution, matching or beating the deep-band rebalance lever (right)
+without leaving the data manifold. `joyful` (bottom) is a control — it isn't a flattened expression, so it
+renders in every column.*
+
+Two implementation details, **verified by running Comfy's actual Krea 2 tokenizer** (not assumed): (1) the
+special tokens are tokenized per the model's config — `<think>`/`</think>`/`<|im_start|>` each map to a single
+token id (151667 / 151668 / 151644), not to literal angle-bracket text; (2) **Krea 2's text encoder strips
+the system turn**: `Krea2TEModel.encode_token_weights` slices the conditioning from the *second* `<|im_start|>`
+(the user turn) onward, so the entire `<|im_start|>system … <|im_end|>` block is discarded before the DiT sees
+it. So the surviving, directly-steerable write-points are the **user turn and the assistant `<think>` turn**;
+a *system*-turn prompt only influences conditioning **indirectly** (the surviving tokens attend back over it
+during the encoder pass), not as injected conditioning. Low–medium confidence on the visual result (one
+subject, a few seeds). Details in [`docs/findings.md`](docs/findings.md).
+
+The rest of the findings **characterize the trained aggregation** by reading the open weights:
 
 > Framing: the *architecture* (cross-layer attention over the 12 layers → `Linear(12→1)` projector →
 > refiners) is public — see Prior work. The items below **characterize the trained model's behavior**, read
@@ -99,36 +94,34 @@ clearly, and a stock-vs-rebalanced test renders them either way. Boosting the de
 lever) mainly shifts **detail, contrast, and intensity** — consistent with the deep layers carrying fine
 detail (see Prior work) — rather than changing whether an attribute appears.
 
-**Prompt-side steering (a `<think>` block in the assistant turn).** Beyond editing weights, the conditioning
-can be steered from the *prompt side*. Turbo's distillation flattens intense expression; appending a short
-`<think>` reasoning span to the assistant turn — injected via the tokenizer's skip-template route (a full
-`<|im_start|>…` string passed as the prompt) — restores it **in-distribution**, as well as or better than the
-deep-band rebalance lever, with adherence intact. A CPU probe shows the span shifts the selected hidden
-states ~17–24% along their own dominant axis (0.86 direction consistency, energy at the L20/L23 hub): it
-behaves like a **steering vector**.
-
-![Krea 2 Turbo, same seed, four expressions across three columns — stock prompt, + a `<think>` block, and + the deep-band rebalance lever. The in-distribution `<think>` block restores the distillation-flattened intense expressions (furious, terrified) as well as or better than the weight-space rebalance lever, with prompt adherence intact.](docs/figures/think_steering_grid.png)
-
-*Same seed (#123); only the column lever changes. The `<think>` block (middle) restores Turbo's
-distillation-flattened expression in-distribution, matching or beating the deep-band rebalance lever (right)
-without leaving the data manifold. `joyful` (bottom) is a control — it isn't a flattened expression, so it
-renders in every column.*
-
-Two implementation details, **verified by running Comfy's actual Krea 2 tokenizer** (not assumed): (1) the
-special tokens are tokenized per the model's config — `<think>`/`</think>`/`<|im_start|>` each map to a single
-token id (151667 / 151668 / 151644), not to literal angle-bracket text; (2) **Krea 2's text encoder strips
-the system turn**: `Krea2TEModel.encode_token_weights` slices the conditioning from the *second* `<|im_start|>`
-(the user turn) onward, so the entire `<|im_start|>system … <|im_end|>` block is discarded before the DiT sees
-it. So the surviving, directly-steerable write-points are the **user turn and the assistant `<think>` turn**;
-a *system*-turn prompt only influences conditioning **indirectly** (the surviving tokens attend back over it
-during the encoder pass), not as injected conditioning. Low–medium confidence on the visual result (one
-subject, a few seeds). Details in [`docs/findings.md`](docs/findings.md).
-
 Confidence is bounded by probes done at a handful of prompts/seeds and an image-level distance metric for the
 leave-one-out ranking. The layer-fusion findings hold on **both RAW and Turbo** — the `txtfusion` weights are
 near-identical across checkpoints (projector cosine 1.0; L20 hub 92–95% on RAW) — and the **refiner/token
 blocks do local (diagonal) token attention** with no dominant sink, so the striking structure lives in the
 layer-fusion, not the token-refinement.
+
+## Usage
+
+```bash
+uv run pytest
+
+# inspect the 12 learned projector weights
+uv run krea2-proj inspect <comfyui_models>/diffusion_models/krea2_turbo_bf16.safetensors
+
+# emit a projector .diff LoRA (uniform identity, or custom per-layer gains)
+uv run krea2-proj lora <ckpt> <comfyui_models>/loras/krea2_custom.safetensors --gains "1,1,1,1,1,1,1,2,1,1,1,1"
+
+# emit 12 single-layer isolation LoRAs (one per selected layer)
+uv run krea2-proj solo <ckpt> <comfyui_models>/loras/krea2_explorer/solo
+
+# recompute the layer-fusion attention maps
+uv run python scripts/extract_attention.py
+```
+
+In ComfyUI, either load an emitted `.diff` file with the stock **LoraLoaderModelOnly**, or add the
+**Krea 2 Projector Rebalance** node between your model loader and sampler. Strength 1 = the chosen gains
+exactly; `solo_band` (or a `solo/` LoRA at strength 1) isolates a single selected layer so you can see what
+it contributes.
 
 ## Reverse-caption probing
 
@@ -160,6 +153,19 @@ Attention in DiTs* ([arXiv 2602.05013](https://arxiv.org/abs/2602.05013)). Commu
 ([`BigStationW/ComfyUi-Untwisting-RoPE`](https://github.com/BigStationW/ComfyUi-Untwisting-RoPE) and a Krea 2
 fork); ours is an independent rebuild on Krea 2's real `[32,48,48]` RoPE axes rather than a `[64,64]`
 approximation.
+
+## Components
+
+| Module | What it does |
+|--------|--------------|
+| `safetensors_patch` | Header parse, single-tensor read, in-place byte patch, and a small-file writer — edits one tensor in a 26 GB checkpoint in seconds without loading it. |
+| `projector` | `read_projector` / `scale_projector` — read and per-layer-scale the learned `txtfusion.projector`. |
+| `projector_lora` | Emit tiny `txtfusion.projector.diff` LoRAs for arbitrary per-layer gains (`diff = orig*(gain-1)`, so strength 1 = exact gains). `make_band_isolation_loras` emits 12 single-layer probes. Loads via the stock `LoraLoaderModelOnly` — **no custom node required**, ~300 bytes each. |
+| `comfy_nodes` | A ComfyUI node, **Krea 2 Projector Rebalance** (`conditioning/Krea2`), that reweights the projector live via the ModelPatcher (`preset` `uniform`/`custom`, `strength`, `per_layer_weights`, `solo_band` to isolate one layer). Restart ComfyUI to load it. |
+| `cli` | `krea2-proj inspect \| lora \| solo`. |
+| `attention_stats` + `scripts/extract_attention.py` | Pure-numpy summarization helpers, plus a script that loads the Krea 2 CLIP and the DiT's `txtfusion` weights (CPU) and recomputes the 12×12 layer-fusion attention maps (head-averaged, per-head, cross-prompt). |
+| `image_grid` | Reusable labeled contact-sheet builder (`build_contact_sheet`) for comparison figures — rows × cols of image paths / `PIL.Image` / `None` (missing cells become placeholders). |
+| `krea2_untwist_node` (+ `rope_untwist`, `krea2_untwist_attn`) | **Experimental.** A ComfyUI node, **Krea 2 Untwist Style Reference** (`conditioning/Krea2`), for **training-free reference-image style transfer** via untwisting-RoPE shared attention — a separate *positional-axis* lever (the rest of this toolkit edits the *feature/conditioning axis*). Built for Krea 2's real `[32,48,48]` RoPE. v1 uses renoise-to-sigma reference injection (no RF-inversion); style transfer needs a **low `high_scale`** (the high default copies the reference). Restart ComfyUI to load it. |
 
 ## License
 
