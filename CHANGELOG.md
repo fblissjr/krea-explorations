@@ -26,6 +26,13 @@ All notable changes to this project are documented here. Format follows
   ("Krea 2 Untwist Style Reference") for training-free reference-image style transfer via untwisting-RoPE
   shared attention, built for Krea2's real `[32,48,48]` RoPE (not the community fork's `[64,64]`). Patches
   the image DiT blocks only (txtfusion untouched); renoise-to-sigma reference injection (no RF-inversion).
+- `divdist_graph`: pure ComfyUI API-graph builders for diversity-distillation arms (`build_single` /
+  `build_split` k=1 base->distilled handoff / `build_rescale` denoise sigma-rescale), realizing base-vs-
+  distilled as one RAW load + Turbo-LoRA strength; plus `api_to_ui` so the importable R/A/B workflow is
+  derived from the same builders (no drift). `keep_system` routes the `<think>` axis through
+  `Krea2EncodeKeepSystem`. Example workflow: `example_workflows/krea2_diversity_distillation_rab.json`.
+- `diversity`: dependency-light pairwise perceptual-diversity aggregation (`pairwise_diversity` /
+  `diversity_table`, metric injected) following the average-pairwise-DreamSim protocol.
 
 ### Findings
 - Interpretability of the layer aggregation: a universal mid-layer attention hub (L20) and a contrastive
@@ -47,6 +54,11 @@ All notable changes to this project are documented here. Format follows
   `Krea2TEModel.encode_token_weights` **strips the system turn** (slices conditioning from the user turn
   onward). Consequence: the directly-steerable write-points are the user turn and the assistant `<think>`
   turn; a system-turn prompt only influences conditioning indirectly (via attention), not as injected tokens.
+- Diversity distillation (arXiv:2503.10637) does **not** transfer to Krea2's flow schedule. Turbo's same-seed
+  diversity collapse reproduces, but the paper's k=1 base-first-step fix is a null (the `firststep` and `k`
+  sweeps change nothing); diversity is instead recovered by lowering the *global* Turbo-LoRA strength (a clean
+  diversity↔quality dial, crossover ~0.5), i.e. the bottleneck is distributed across all steps, not localized
+  at the first. Two prompts, 4 seeds, visual read. Measure-first: the per-step-schedule node was not built.
 
 ### Documentation
 - Published `docs/findings.md`, `docs/figures/` (attention maps), `docs/data/` (numeric arrays), and
