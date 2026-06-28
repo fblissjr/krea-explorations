@@ -74,3 +74,33 @@ def test_load_direction_rejects_empty_path():
         assert "direction_path" in str(e)
         return
     raise AssertionError("expected ValueError for empty direction_path")
+
+
+# --- in-graph direction builder (Krea2ConceptDirection): the pooling/diff math, numpy-tested ---
+
+def test_pool_cond_vec_means_over_all_but_last_axis():
+    from krea2_explorations.krea2_concept_inject_node import _pool_cond_vec
+
+    c = np.arange(2 * 3 * 4, dtype=np.float64).reshape(2, 3, 4)  # (B, seq, feat)
+    v = _pool_cond_vec(c)
+    assert v.shape == (4,)
+    assert np.allclose(v, c.reshape(-1, 4).mean(0))  # mean over B and seq
+
+
+def test_concept_direction_is_pooled_difference_of_means():
+    from krea2_explorations.krea2_concept_inject_node import _concept_direction
+
+    pos = [[np.full((1, 2, 4), 3.0), {}]]  # pools to 3
+    neg = [[np.full((1, 2, 4), 1.0), {}]]  # pools to 1
+    d = _concept_direction(pos, neg)
+    assert d.shape == (4,)
+    assert np.allclose(d, 2.0)  # 3 - 1
+
+
+def test_concept_direction_averages_multiple_conditioning_entries():
+    from krea2_explorations.krea2_concept_inject_node import _concept_direction
+
+    pos = [[np.full((1, 1, 4), 2.0), {}], [np.full((1, 1, 4), 4.0), {}]]  # entries average to 3
+    neg = [[np.zeros((1, 1, 4)), {}]]
+    d = _concept_direction(pos, neg)
+    assert np.allclose(d, 3.0)

@@ -57,6 +57,67 @@ def _load_direction(path, feat_dim, bands, torch, np):
     return torch.from_numpy(arr)
 
 
+def _pool_cond_vec(cond):
+    """Mean a conditioning tensor over all but the last (feature) axis -> (feat,). numpy/torch-agnostic."""
+    return cond.reshape(-1, cond.shape[-1]).mean(0)
+
+
+def _concept_direction(positive, negative):
+    """Difference-of-means concept direction (feat,) from two ComfyUI CONDITIONINGs. numpy/torch-agnostic.
+
+    Each CONDITIONING is a list of ``[cond_tensor, meta]``; pool every entry over tokens+batch and average,
+    then subtract negative from positive. Equivalent to ``scripts/concept_direction.py`` for the usual
+    single-batch case (the CLI pools per-prompt over tokens; this pools over tokens and batch together).
+    Callers must pass float tensors (``build`` casts first) so the difference doesn't lose small components to
+    fp16/bf16 cancellation.
+    """
+    def _pool(conditioning):
+        vecs = [_pool_cond_vec(cond) for cond, _meta in conditioning]
+        acc = vecs[0]
+        for v in vecs[1:]:
+            acc = acc + v
+        return acc / len(vecs)
+
+    return _pool(positive) - _pool(negative)
+
+
+class Krea2ConceptDirection:
+    """Build a concept direction in-graph from positive/negative prompts (feeds Krea 2 Concept Inject)."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "positive": ("CONDITIONING", {"tooltip": "prompt(s) WITH the concept"}),
+                "negative": ("CONDITIONING", {"tooltip": "matched prompt(s) WITHOUT it"}),
+            },
+            "optional": {
+                "save_path": ("STRING", {"default": "", "tooltip": "optional .npy to also save the direction "
+                              "(12x2560) for reuse / building a library."}),
+            },
+        }
+
+    RETURN_TYPES = ("KREA2_CONCEPT_DIR",)
+    RETURN_NAMES = ("direction",)
+    FUNCTION = "build"
+    CATEGORY = "conditioning/Krea2"
+    DESCRIPTION = ("Difference-of-means concept direction from positive/negative prompts -> feed it to "
+                   "Krea 2 Concept Inject. No model load (operates on the conditioning you already encoded).")
+
+    def build(self, positive, negative, save_path=""):
+        # cast to float BEFORE pooling: difference-of-means of fp16/bf16 conditioning loses small components
+        pos = [[cond.float(), meta] for cond, meta in positive]
+        neg = [[cond.float(), meta] for cond, meta in negative]
+        d = _concept_direction(pos, neg).detach().to(device="cpu").float()  # flat (feat,)
+        if save_path:
+            import numpy as np
+            arr = d.numpy()
+            if arr.shape[0] % 12 == 0:
+                arr = arr.reshape(12, -1)  # the (12, 2560) layout scripts/concept_direction.py writes
+            np.save(save_path, arr)
+        return (d,)
+
+
 class Krea2ConceptInject:
     """Targeted concept amplify/inject/project-out on Krea2 conditioning (the bypass, generalized + aimed)."""
 
@@ -65,13 +126,15 @@ class Krea2ConceptInject:
         return {
             "required": {
                 "conditioning": ("CONDITIONING",),
-                "direction_path": ("STRING", {"default": "", "tooltip": ".npy/.npz concept direction "
-                                   "(12x2560 / 30720 / 2560), e.g. a difference-of-means axis."}),
                 "mode": (["amplify", "add", "subtract", "project_out"], {"default": "amplify"}),
                 "scale": ("FLOAT", {"default": 1.0, "min": -50.0, "max": 50.0, "step": 0.1,
                           "tooltip": "amplify: 1.0 == bypass x2 on the present component. +/- to push either way."}),
             },
             "optional": {
+                "direction": ("KREA2_CONCEPT_DIR", {"tooltip": "direction from Krea 2 Concept Direction "
+                              "(takes priority over direction_path)."}),
+                "direction_path": ("STRING", {"default": "", "tooltip": ".npy/.npz concept direction "
+                                   "(12x2560 / 30720 / 2560); used only if no 'direction' is connected."}),
                 "normalize": ("BOOLEAN", {"default": True, "tooltip": "unit-normalize the direction first "
                               "(scale in unit terms). Ignored by amplify/project_out (always use d̂)."}),
             },
@@ -84,21 +147,28 @@ class Krea2ConceptInject:
     DESCRIPTION = ("Targeted version of the bypass: amplify/inject/remove a single measured concept direction "
                    "on Krea2 conditioning. 'amplify' boosts the present component (can't conjure absent ones).")
 
-    def apply(self, conditioning, direction_path, mode, scale, normalize=True):
+    def apply(self, conditioning, mode, scale, direction=None, direction_path="", normalize=True):
         import numpy as np
         import torch
 
         out, d_cpu = [], None
         for cond, meta in conditioning:
-            if d_cpu is None:  # feat dim is constant across one CONDITIONING -> load the direction once
-                d_cpu = _load_direction(direction_path, cond.shape[-1], 12, torch, np)
+            if d_cpu is None:  # feat dim is constant across one CONDITIONING -> resolve the direction once
+                if direction is not None:  # in-graph direction (from Krea2ConceptDirection) wins over the path
+                    d_cpu = direction.reshape(-1).detach().to(device="cpu").float()
+                    if d_cpu.shape[0] != cond.shape[-1]:
+                        raise ValueError(f"Krea2ConceptInject: direction length {d_cpu.shape[0]} != "
+                                         f"conditioning feature dim {cond.shape[-1]}")
+                else:
+                    d_cpu = _load_direction(direction_path, cond.shape[-1], 12, torch, np)
             d = d_cpu.to(device=cond.device, dtype=cond.dtype)
             out.append([apply_direction(cond, d, float(scale), mode, bool(normalize)), meta.copy()])
         return (out,)
 
 
-NODE_CLASS_MAPPINGS = {"Krea2ConceptInject": Krea2ConceptInject}
-NODE_DISPLAY_NAME_MAPPINGS = {"Krea2ConceptInject": "Krea 2 Concept Inject (targeted bypass)"}
+NODE_CLASS_MAPPINGS = {"Krea2ConceptInject": Krea2ConceptInject, "Krea2ConceptDirection": Krea2ConceptDirection}
+NODE_DISPLAY_NAME_MAPPINGS = {"Krea2ConceptInject": "Krea 2 Concept Inject (targeted bypass)",
+                             "Krea2ConceptDirection": "Krea 2 Concept Direction"}
 
-__all__ = ["Krea2ConceptInject", "NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS",
-           "apply_direction", "_load_direction"]
+__all__ = ["Krea2ConceptInject", "Krea2ConceptDirection", "NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS",
+           "apply_direction", "_load_direction", "_concept_direction", "_pool_cond_vec"]

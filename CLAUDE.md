@@ -16,10 +16,12 @@ lead with falsifications, not "discoveries".
 Two ways to steer Krea 2's conditioning, both in scope here:
 
 1. **Weight/activation edits** — the projector rebalance + single-layer isolation tooling (the core package:
-   `projector`, `projector_lora`, `comfy_nodes`), plus the **concept-direction inject** node
-   (`krea2_concept_inject_node` + `scripts/concept_direction.py`): measure a difference-of-means axis from an
-   A/B prompt pair and amplify/inject/project-out it on the conditioning. Edits weights or activations, stays
-   in-distribution via downstream RMSNorm. Guide: `docs/concept_directions.md`.
+   `projector`, `projector_lora`, `comfy_nodes`), plus the **concept-direction** nodes
+   (`krea2_concept_inject_node`): *Krea 2 Concept Direction* measures a difference-of-means axis from an A/B
+   prompt pair in-graph, *Krea 2 Concept Inject* amplifies/injects/project-outs it on the conditioning
+   (`scripts/concept_direction.py` is the offline CLI that writes the same `.npy`). Edits weights or
+   activations, stays in-distribution via downstream RMSNorm. Guide: `docs/concept_directions.md`;
+   workflow: `example_workflows/krea2_concept_inject.json`.
 2. **Prompt-side steering** — a `<think>` block / system prompt / prefix written into the text the encoder
    sees. Inject custom spans via the **tokenizer skip-template route**: pass a full `<|im_start|>…` string as
    the prompt and the qwen3vl tokenizer emits it verbatim, so no ComfyUI/pipeline edit is needed. It behaves

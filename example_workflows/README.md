@@ -1,6 +1,6 @@
 # Example workflows — exploring Krea 2's layer aggregation
 
-Last updated: 2026-06-26
+Last updated: 2026-06-28
 
 Minimal, deterministic Krea 2 Turbo text-to-image graphs for *exploring* how the model combines its 12
 selected encoder layers. Prompt-enhancement is intentionally stripped and the seed is fixed, so any change
@@ -13,6 +13,12 @@ in output is attributable to the projector reweighting you apply.
 - `krea2_turbo_solo_explorer.json` — the base graph plus a **LoraLoaderModelOnly** loading one single-layer
   probe (`projector_solo_b08_L26.safetensors`) at strength 1, so the image is driven by one selected layer.
   Swap the `lora_name` to sweep the 12. (Generate the probes first: `krea2-proj solo` — see the repo README.)
+- `krea2_concept_inject.json` — the base graph plus the **Krea 2 Concept Direction** + **Krea 2 Concept
+  Inject** nodes: two extra `CLIPTextEncode`s (a `smile` present/absent pair) build a concept direction that
+  is `amplify`-ed (scale 2.0) into the prompt's conditioning before the sampler. Edit the two concept prompts
+  to target any axis; change `mode`/`scale` on the inject node. **Restart ComfyUI first** so the two new nodes
+  load; if any slot looks off after loading, re-save from ComfyUI. See
+  [`docs/concept_directions.md`](../docs/concept_directions.md).
 
 ## How to explore per-layer contribution
 

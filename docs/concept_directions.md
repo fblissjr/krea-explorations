@@ -7,11 +7,14 @@ A targeted generalization of the [projector-rebalance lever](findings.md). The r
 removes it. It works on any axis the text encoder already represents — expression, style, lighting, pose, a
 material attribute.
 
-Two pieces:
+Three pieces (the nodes are under `conditioning/Krea2`):
 
-1. **`scripts/concept_direction.py`** — measure a direction from an A/B prompt pair (offline, CPU).
-2. **The *Krea 2 Concept Inject* node** (`conditioning/Krea2`) — apply that direction to the conditioning at
-   generation time.
+1. **Krea 2 Concept Direction** node — build a direction **in-graph** from two prompts (the turnkey path: no
+   terminal, no file). Outputs a `KREA2_CONCEPT_DIR`.
+2. **Krea 2 Concept Inject** node — apply a direction to the conditioning. Takes the builder's `direction`
+   output, *or* a saved `.npy` path.
+3. **`scripts/concept_direction.py`** — the CLI version of the builder, for batch-building a reusable library
+   of `.npy` directions offline.
 
 ## How it works
 
@@ -39,33 +42,50 @@ aggregation at all.
 
 ## Usage
 
-1. Write an A/B prompt set. [`examples/concept_directions.json`](../examples/concept_directions.json) is a
-   benign starter (`smile`, `ornate`, `golden_hour`):
+### In ComfyUI (turnkey — no terminal)
 
-   ```json
-   {
-     "smile": {
-       "pos": ["a close-up portrait photograph of a person with a wide, joyful, open-mouthed smile"],
-       "neg": ["a close-up portrait photograph of a person with a flat, neutral expression"]
-     }
-   }
-   ```
+Encode the concept's present/absent prompts with two `CLIPTextEncode` nodes, build the direction, and inject it
+into your prompt's conditioning:
 
-   Multiple prompts per side average out incidental content and sharpen the axis.
+```
+CLIPTextEncode("...a wide joyful smile") ─┐
+                                          ├─► Krea 2 Concept Direction ──┐
+CLIPTextEncode("...a neutral expression")─┘                            ▼ (direction)
+CLIPTextEncode(your prompt) ───────────────────► Krea 2 Concept Inject(mode, scale) ─► KSampler
+```
 
-2. Measure the directions (CPU; loads the Krea 2 CLIP via `scripts/krea2_clip.py`):
+Pick a `mode` and dial `scale` (`amplify` 1.0 ≈ bypass ×2; negative pushes the other way). Restart ComfyUI once
+to load the nodes. The bundled
+[`example_workflows/krea2_concept_inject.json`](../example_workflows/krea2_concept_inject.json) is exactly this
+wiring with the benign `smile` example — open it and run. Set the builder's optional `save_path` to also write
+the `.npy` and keep the axis for reuse.
 
-   ```bash
-   uv run --active python scripts/concept_direction.py examples/concept_directions.json --out <comfyui_models>/concept_dirs
-   ```
+### Offline (build a library of `.npy` directions)
 
-   This writes one `<name>.npy` (shape `12×2560`) per concept. `--text-encoder` overrides the CLIP file.
+For many concepts at once, the CLI is the batch version of the builder. Write an A/B prompt set
+([`examples/concept_directions.json`](../examples/concept_directions.json) is a benign starter — `smile`,
+`ornate`, `golden_hour`):
 
-3. In ComfyUI, drop the **Krea 2 Concept Inject** node between your text-encode and the sampler, set
-   `direction_path` to the `.npy`, pick a `mode`, and dial `scale` (`amplify` 1.0 ≈ bypass ×2; negative pushes
-   the other way). Restart ComfyUI once to load the node.
+```json
+{
+  "smile": {
+    "pos": ["a close-up portrait photograph of a person with a wide, joyful, open-mouthed smile"],
+    "neg": ["a close-up portrait photograph of a person with a flat, neutral expression"]
+  }
+}
+```
 
-The math (`apply_direction`, `pooled_direction`) is numpy/torch-agnostic and unit-tested
+Multiple prompts per side average out incidental content and sharpen the axis. Then measure (CPU; loads the
+Krea 2 CLIP via `scripts/krea2_clip.py`):
+
+```bash
+uv run --active python scripts/concept_direction.py examples/concept_directions.json --out <comfyui_models>/concept_dirs
+```
+
+This writes one `<name>.npy` (shape `12×2560`) per concept (`--text-encoder` overrides the CLIP file). In the
+**Krea 2 Concept Inject** node, leave `direction` unconnected and set `direction_path` to the `.npy`.
+
+The math (`apply_direction`, `pooled_direction`, `_concept_direction`) is numpy/torch-agnostic and unit-tested
 (`tests/test_concept_inject.py`, `tests/test_concept_direction.py`); only the encode step needs comfy.
 
 ## Relationship to the other levers

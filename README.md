@@ -134,14 +134,19 @@ concept direction** from an A/B prompt pair and **amplify / inject / project-out
 it a quick test of whether the axis is represented at all. Works on any axis the encoder represents
 (expression, style, lighting, pose, an attribute).
 
+**Turnkey, all in ComfyUI:** wire two `CLIPTextEncode` nodes (concept present / absent) into **Krea 2 Concept
+Direction**, feed its output into **Krea 2 Concept Inject** with your prompt, and dial a slider — no terminal,
+no files. The bundled [`example_workflows/krea2_concept_inject.json`](example_workflows/krea2_concept_inject.json)
+is that wiring with a benign `smile` example; open it and run.
+
+To batch-build a reusable library of directions offline:
+
 ```bash
 # measure directions from A/B prompt pairs -> one <name>.npy each (CPU)
 uv run --active python scripts/concept_direction.py examples/concept_directions.json --out <comfyui_models>/concept_dirs
 ```
 
-Then drop the **Krea 2 Concept Inject** node (`conditioning/Krea2`) between text-encode and sampler, point
-`direction_path` at the `.npy`, and pick a mode + scale (`amplify` 1.0 ≈ the bypass LoRA's ×2). Full guide,
-modes, and the math: [`docs/concept_directions.md`](docs/concept_directions.md).
+Full guide, modes, and the math: [`docs/concept_directions.md`](docs/concept_directions.md).
 
 ## Reverse-caption probing
 
