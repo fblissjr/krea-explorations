@@ -1,6 +1,6 @@
 # CLAUDE.md — krea2-explorations
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 Project memory for this repo. Global conventions (uv, TDD, path-privacy, docs, no emojis) are in the
 user-level CLAUDE.md and still apply; this file holds only what's specific to this repo.
@@ -8,12 +8,12 @@ user-level CLAUDE.md and still apply; this file holds only what's specific to th
 ## What this is
 
 Tools for measuring and surgically editing Krea 2's text conditioning (per-layer projector edits,
-checkpoint analysis, attention extraction) plus the experiment harnesses that test them. Measure-first:
-lead with falsifications, not "discoveries".
+checkpoint analysis, attention extraction) — and its *sampling* (diversity-distillation arms) — plus the
+experiment harnesses that test them. Measure-first: lead with falsifications, not "discoveries".
 
-## Two lever classes (keep both in mind)
+## Three lever classes (keep all in mind)
 
-Two ways to steer Krea 2's conditioning, both in scope here:
+Three ways to steer Krea 2's output, all in scope here:
 
 1. **Weight/activation edits** — the projector rebalance + single-layer isolation tooling (the core package:
    `projector`, `projector_lora`, `comfy_nodes`). Edits weights, stays in-distribution via downstream RMSNorm.
@@ -22,6 +22,13 @@ Two ways to steer Krea 2's conditioning, both in scope here:
    the prompt and the qwen3vl tokenizer emits it verbatim, so no ComfyUI/pipeline edit is needed. It behaves
    like a steering vector — push within-distribution and prompt adherence holds. See `docs/findings.md`
    ("Prompt-side steering").
+3. **Sampler-side (schedule / LoRA-strength)** — the diversity-distillation arms in `divdist_graph`
+   (`build_single` / `build_split` k=1 base→distilled handoff / `build_rescale` denoise sigma-rescale).
+   Realize base↔distilled as ONE RAW load + Turbo-LoRA strength (0 = base, 1 = distilled); pure dict builders,
+   tested, driven by `scripts/generate.run`. **Workflows are derived from the builders** via `api_to_ui` —
+   don't hand-author UI JSON. Finding (`internal/training/diversity_distillation_prereg.md`): the paper's
+   (arXiv:2503.10637) k=1 first-step fix is a *null* on Krea 2's flow schedule; the diversity↔quality lever
+   that works is *global* LoRA strength (crossover ~0.5).
 
 Public/tracked files stay benign in name and content; sensitive prompts, data, and any
 sensitive-referencing filenames live only in gitignored `internal/` and `data/`.
@@ -38,6 +45,10 @@ build_contact_sheet(grid_rows, out_path, col_labels=[...], row_labels=[...])
 
 `grid_rows` is a 2D list (rows x cols) of image path / `PIL.Image` / `None`; missing cells render as a
 placeholder instead of crashing. It depends only on Pillow + stdlib. Tests: `tests/test_image_grid.py`.
+
+Likewise for **pairwise diversity** (the average-pairwise-DreamSim protocol): one tested impl —
+`krea2_explorations.diversity.pairwise_diversity` / `diversity_table` (metric injected, stdlib-only). Don't
+re-inline the pairwise loop. Tests: `tests/test_diversity.py`.
 
 ## Two virtualenvs (this bites)
 

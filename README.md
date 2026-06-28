@@ -1,6 +1,6 @@
 # krea2-explorations
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 A study of **how Krea 2 combines its text-encoder layers** (its "multilayer feature aggregation") and how that
 conditioning can be **steered** — plus a small, dependency-light toolkit to reproduce the measurements. The
@@ -56,6 +56,18 @@ it. So the surviving, directly-steerable write-points are the **user turn and th
 a *system*-turn prompt only influences conditioning **indirectly** (the surviving tokens attend back over it
 during the encoder pass), not as injected conditioning. Low–medium confidence on the visual result (one
 subject, a few seeds). Details in [`docs/findings.md`](docs/findings.md).
+
+**Sampler-side: "diversity distillation" does not transfer to Krea 2's flow schedule (a falsification).**
+Distilled (Turbo) models lose same-seed diversity; [Gandikota & Bau](https://arxiv.org/abs/2503.10637)
+attribute this to over-commitment at the *first* denoising step and fix it by running the **base** model for
+just that one step (k=1). Krea 2 is a flow model — they tested none — so we measured it: the collapse
+**reproduces** (Turbo gives near-identical compositions across seeds where RAW gives varied ones), but the
+**k=1 fix is a null** — running RAW for the first step, or sweeping the first-step strength / handoff step,
+changes essentially nothing. Diversity is instead recovered by lowering the **global** Turbo-LoRA strength: a
+clean diversity↔quality dial (crossover ~0.5), i.e. the bottleneck is **distributed across all steps**, not
+localized at the first. Tooling realizes base↔distilled as one RAW load + Turbo-LoRA strength
+(`divdist_graph`; the importable `example_workflows/krea2_diversity_distillation_rab.json` is *derived* from
+the same builders via `api_to_ui`). Two prompts, 4 seeds, visual read.
 
 The rest of the findings **characterize the trained aggregation** by reading the open weights:
 
@@ -165,6 +177,8 @@ approximation.
 | `cli` | `krea2-proj inspect \| lora \| solo`. |
 | `attention_stats` + `scripts/extract_attention.py` | Pure-numpy summarization helpers, plus a script that loads the Krea 2 CLIP and the DiT's `txtfusion` weights (CPU) and recomputes the 12×12 layer-fusion attention maps (head-averaged, per-head, cross-prompt). |
 | `image_grid` | Reusable labeled contact-sheet builder (`build_contact_sheet`) for comparison figures — rows × cols of image paths / `PIL.Image` / `None` (missing cells become placeholders). |
+| `divdist_graph` | Pure, tested ComfyUI **API-graph builders** for diversity-distillation arms (`build_single`, `build_split` k=1 base→distilled handoff, `build_rescale` denoise sigma-rescale), realizing base↔distilled as one RAW load + Turbo-LoRA strength. `api_to_ui` derives the importable R/A/B workflow from the same builders (no drift); the `<think>` axis routes through `Krea2EncodeKeepSystem`. Driven by `scripts/generate.run`. |
+| `diversity` | Dependency-light pairwise perceptual-diversity aggregation (`pairwise_diversity` / `diversity_table`, metric injected) for the average-pairwise-DreamSim protocol. |
 | `krea2_untwist_node` (+ `rope_untwist`, `krea2_untwist_attn`) | **Experimental.** A ComfyUI node, **Krea 2 Untwist Style Reference** (`conditioning/Krea2`), for **training-free reference-image style transfer** via untwisting-RoPE shared attention — a separate *positional-axis* lever (the rest of this toolkit edits the *feature/conditioning axis*). Built for Krea 2's real `[32,48,48]` RoPE. v1 uses renoise-to-sigma reference injection (no RF-inversion); style transfer needs a **low `high_scale`** (the high default copies the reference). Restart ComfyUI to load it. |
 
 ## License
