@@ -38,6 +38,16 @@ def difference_of_means(group_a: np.ndarray, group_b: np.ndarray) -> np.ndarray:
     return a.mean(axis=0) - b.mean(axis=0)
 
 
+def pooled_direction(positives: np.ndarray, negatives: np.ndarray, n_bands: int = 12) -> np.ndarray:
+    """A concept direction shaped for Krea 2's 12-layer conditioning axis (for ``Krea2ConceptInject``).
+
+    ``mean(positives) - mean(negatives)`` (a difference-of-means contrast), reshaped to
+    ``(n_bands, band_dim)``. Each group is a sequence of pooled conditioning vectors of length
+    ``n_bands*band_dim`` -- one per prompt (produce them with ``scripts/krea2_clip.pooled_conditioning``).
+    """
+    return difference_of_means(positives, negatives).reshape(n_bands, -1)
+
+
 def pair_deltas(group_a: np.ndarray, group_b: np.ndarray) -> np.ndarray:
     """Per-pair ``A_i - B_i`` for row-aligned matched pairs -> ``[n_items, dim]``."""
     a = np.asarray(group_a, dtype=np.float64)

@@ -1,0 +1,14 @@
+{
+  "smile": {
+    "pos": ["a close-up portrait photograph of a person with a wide, joyful, open-mouthed smile"],
+    "neg": ["a close-up portrait photograph of a person with a flat, neutral expression"]
+  },
+  "ornate": {
+    "pos": ["an intricate, ornate, highly detailed baroque interior full of carved gold ornamentation"],
+    "neg": ["a plain, bare, minimal empty room with smooth blank walls"]
+  },
+  "golden_hour": {
+    "pos": ["a landscape photograph at golden hour, warm low sun, long shadows, glowing rim light"],
+    "neg": ["a landscape photograph at flat midday light, no shadows, even grey overcast"]
+  }
+}

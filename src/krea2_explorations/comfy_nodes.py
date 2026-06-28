@@ -96,10 +96,16 @@ from .krea2_keep_system_node import (
     NODE_CLASS_MAPPINGS as _KEEPSYS_NODES,
     NODE_DISPLAY_NAME_MAPPINGS as _KEEPSYS_NAMES,
 )
+from .krea2_concept_inject_node import (
+    NODE_CLASS_MAPPINGS as _INJECT_NODES,
+    NODE_DISPLAY_NAME_MAPPINGS as _INJECT_NAMES,
+)
 
-NODE_CLASS_MAPPINGS = {"Krea2ProjectorRebalance": Krea2ProjectorRebalance, **_UNTWIST_NODES, **_KEEPSYS_NODES}
+NODE_CLASS_MAPPINGS = {
+    "Krea2ProjectorRebalance": Krea2ProjectorRebalance, **_UNTWIST_NODES, **_KEEPSYS_NODES, **_INJECT_NODES,
+}
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Krea2ProjectorRebalance": "Krea 2 Projector Rebalance", **_UNTWIST_NAMES, **_KEEPSYS_NAMES,
+    "Krea2ProjectorRebalance": "Krea 2 Projector Rebalance", **_UNTWIST_NAMES, **_KEEPSYS_NAMES, **_INJECT_NAMES,
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "Krea2ProjectorRebalance", "SELECT_LAYERS"]
