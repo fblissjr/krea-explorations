@@ -40,8 +40,8 @@ the user-facing docs in the SAME change — they're what people actually use:
   `docs/findings.md`.
 - Bump the `Last updated:` date on every doc you touch.
 
-Keep all public examples benign (generic prompts/axes — expression, style, pose); the explicit applications
-stay in gitignored `internal/`. Don't let README/docs drift behind the code.
+Keep all public examples benign (generic prompts/axes — expression, style, pose); anything sensitive stays in
+gitignored `internal/`. Don't let README/docs drift behind the code.
 
 ## Comparison grids / figures — use the shared util
 

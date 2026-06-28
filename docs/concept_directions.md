@@ -30,7 +30,7 @@ The node applies `d` (unit-normalized as `d̂`) per token, in one of four modes:
 
 | mode | effect |
 |------|--------|
-| `amplify` | `cond += scale · (cond·d̂) d̂` — boost the component **already present**. `scale` 1.0 ≈ the bypass LoRA's ×2, but aimed at one axis. |
+| `amplify` | `cond += scale · (cond·d̂) d̂` — boost the component **already present**. `scale` 1.0 doubles it (×2), aimed at one axis. |
 | `add` | `cond += scale · d̂` — inject the direction regardless of what's present. |
 | `subtract` | `cond -= scale · d̂` |
 | `project_out` | `cond -= (cond·d̂) d̂` — remove the concept entirely. |
@@ -54,7 +54,7 @@ CLIPTextEncode("...a neutral expression")─┘                            ▼ (
 CLIPTextEncode(your prompt) ───────────────────► Krea 2 Concept Inject(mode, scale) ─► KSampler
 ```
 
-Pick a `mode` and dial `scale` (`amplify` 1.0 ≈ bypass ×2; negative pushes the other way). Restart ComfyUI once
+Pick a `mode` and dial `scale` (`amplify` 1.0 doubles the present component (×2); negative pushes the other way). Restart ComfyUI once
 to load the nodes. The bundled
 [`example_workflows/krea2_concept_inject.json`](../example_workflows/krea2_concept_inject.json) is exactly this
 wiring with the benign `smile` example — open it and run. Set the builder's optional `save_path` to also write
@@ -91,7 +91,7 @@ The math (`apply_direction`, `pooled_direction`, `_concept_direction`) is numpy/
 ## Relationship to the other levers
 
 - **Projector rebalance** (weights) scales whole layers; this aims at one measured direction in the
-  activations. `amplify` is the same magnitude move the bypass LoRA makes, but targeted to a single axis.
+  activations. `amplify` is the same deep-band magnitude move, but targeted to a single axis.
 - **Prompt-side `<think>` steering** (see [findings.md](findings.md)) is the cheapest steering vector when the
   axis is reachable from wording; a measured concept direction is the activation-space version for when it
   isn't.
