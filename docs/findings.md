@@ -239,6 +239,63 @@ verified). Untested twin: does a system-turn prompt steer *at all* through the i
 follow-up this pointed to is **now done** — see **Labeled-axis steering** below: it turns "steering works"
 into "steer a *named* axis on purpose, and predict in advance whether it will".
 
+<a id="labeled-axis" name="labeled-axis"></a>
+
+### Labeled-axis steering — what predicts it, and how clean is an axis? (2026-06-29)
+
+Goal: turn "steering works (vaguely)" into "steer a *named* axis on purpose, and predict in advance whether
+it will." Measured a difference-of-means direction for four benign axes (smile / detail / wide_shot /
+warm_light), characterized each through the real `txtfusion` forward, then amplified each on a neutral base
+via the concept-inject node. **Low–medium confidence** (1–2 seeds, visual read). Figures inline below;
+harness/prereg internal.
+
+- **Projector pass-through does NOT predict steerability — it's inverted.** A CPU measurement of how much of
+  each axis survives the fusion (pre→post-fusion d′) ranked warm_light highest (0.96) and smile lowest
+  (0.63); actual amplify-steering strength was the *exact opposite* (smile fires hardest, warm_light barely
+  moves). The fusion-separation metric is a dead end for predicting steering.
+- **Direction *consistency* (the cheap A/B-pair measure) is the better proxy — for the extremes.** The
+  cleanest axis (smile, consistency 0.98) steers hardest and the noisiest (warm_light, 0.52) weakest, but the
+  middle isn't monotonic (wide_shot 0.59 outpunches detail 0.71). **Axis visual-saliency also matters** — a
+  composition/style axis moves more pixels than a subtle lighting axis at equal consistency.
+- **A measured axis drags whatever co-varied in its A/B prompts.** smile → close-up framing, wide_shot →
+  illustration style, detail → crop + plain background. The difference-of-means captures the *whole* contrast,
+  not just the named word.
+- **The coupling is largely prompt-design — but cleaning it costs steering power (a real trade-off).** Re-
+  measuring smile from *framing-free* A/B (no "close-up portrait" words) removes the zoom: on a full-body base
+  the clean axis holds framing where the original zooms to a face. **But** on a portrait base the clean axis
+  steers expression *much* more weakly (barely a smile at scale 6 vs a dramatic one for the original). So the
+  close-up context in the original A/B was **load-bearing for the signal**, not just incidental drag — you
+  can't trivially get a clean *and* strong axis by dropping framing words (higher scale on the clean axis is
+  untested). Tighter matched pairs help; they don't fully decouple.
+- **`amplify` CAN conjure a seemingly-absent axis at usable scale** — correcting the prior claim. Amplifying
+  the smile direction on a *no-face landscape* grows a full laughing face by scale 4. `amplify` is
+  `(1+scale)·(cond·d̂)·d̂`: a real prompt's projection onto `d̂` is never exactly zero, and the direction
+  carries coupled "face presence," so a small residual blows up into the concept. It is **not** a reliable
+  "is the concept present?" test (`concept_directions.md` corrected).
+
+![Grid A — labeled-axis steering strength: rows = four benign axes ordered by direction consistency (smile 0.98 > detail 0.71 > wide_shot 0.59 > warm_light 0.52); projector pass-through is the reverse of the row order (smile 0.63 lowest, warm_light 0.96 highest). Cols = amplify scale on a neutral "person in a room" base, same seed. The top row (smile) steers hardest and the bottom (warm_light) barely moves — opposite to what pass-through would predict.](figures/labeled_axis_strength.png)
+
+*Grid A: rows = axis ordered by **direction consistency** (high→low); projector pass-through runs the reverse
+of the row order. Cols = amplify scale on a neutral base. smile (top) steers hardest, warm_light (bottom)
+barely moves — so pass-through does **not** predict steerability, and consistency is the better (if imperfect —
+wide_shot outpunches detail) proxy.*
+
+![amplify-conjures control (two rows): row 1 amplifies the "smile" direction on a no-face mountain-landscape base; row 2 on a portrait base (positive control). Cols = amplify scale. On the landscape a full laughing face grows out of the empty mountains by scale ~4; the portrait smiles as expected — so amplify is a magnitude lever that can conjure an apparently-absent axis, not a presence gate.](figures/labeled_axis_amplify_conjures.png)
+
+*Rows = base (row 1 = no-face landscape, row 2 = has-face portrait positive control); cols = amplify scale. By
+scale ~4 a face appears from the empty landscape — refuting "amplify can't conjure an absent axis." `amplify`
+scales the (never-exactly-zero) present component, so a small residual blows up into the concept.*
+
+![clean-vs-coupled smile axis: the original close-up-A/B smile direction vs a framing-free A/B smile direction, swept by amplify scale on a portrait base. The original drags a close-up zoom; the framing-free axis holds framing but steers expression much more weakly — a clean-vs-strong trade-off.](figures/labeled_axis_clean_vs_coupled.png)
+
+*Original (close-up A/B) smile axis vs a framing-free smile axis. Cleaning the co-varied zoom costs steering
+strength — the close-up context was load-bearing, so a clean **and** strong axis isn't free.*
+
+**Takeaway.** "Steer a named axis on purpose" is achievable but bounded: consistency (cheap) beats the
+fusion-pass-through metric for predicting *which* axes steer; every axis drags its A/B co-variation; cleaning
+that drag with tighter pairs trades against signal strength; and `amplify` is a magnitude lever that conjures
+at high scale, not a presence gate.
+
 ### The Turbo-LoRA strength dial — a de-distillation lever (2026-06-28, re-run on an open scene 2026-06-29)
 
 This lever edits the **DiT** path, not the conditioning, and it's a clean continuous dial. Krea 2's Turbo LoRA
@@ -328,60 +385,3 @@ more and can letterbox, e.g. seed 314.)*
 Open follow-up: a **composition-aware diversity metric**. Pixel-diff saturates on busy scenes (the single-pass
 and split market-street rows both scored ~63 despite the split being visibly more varied), so it
 under-measures diversity exactly where it matters.
-
-<a id="labeled-axis" name="labeled-axis"></a>
-
-### Labeled-axis steering — what predicts it, and how clean is an axis? (2026-06-29)
-
-Goal: turn "steering works (vaguely)" into "steer a *named* axis on purpose, and predict in advance whether
-it will." Measured a difference-of-means direction for four benign axes (smile / detail / wide_shot /
-warm_light), characterized each through the real `txtfusion` forward, then amplified each on a neutral base
-via the concept-inject node. **Low–medium confidence** (1–2 seeds, visual read). Figures inline below;
-harness/prereg internal.
-
-- **Projector pass-through does NOT predict steerability — it's inverted.** A CPU measurement of how much of
-  each axis survives the fusion (pre→post-fusion d′) ranked warm_light highest (0.96) and smile lowest
-  (0.63); actual amplify-steering strength was the *exact opposite* (smile fires hardest, warm_light barely
-  moves). The fusion-separation metric is a dead end for predicting steering.
-- **Direction *consistency* (the cheap A/B-pair measure) is the better proxy — for the extremes.** The
-  cleanest axis (smile, consistency 0.98) steers hardest and the noisiest (warm_light, 0.52) weakest, but the
-  middle isn't monotonic (wide_shot 0.59 outpunches detail 0.71). **Axis visual-saliency also matters** — a
-  composition/style axis moves more pixels than a subtle lighting axis at equal consistency.
-- **A measured axis drags whatever co-varied in its A/B prompts.** smile → close-up framing, wide_shot →
-  illustration style, detail → crop + plain background. The difference-of-means captures the *whole* contrast,
-  not just the named word.
-- **The coupling is largely prompt-design — but cleaning it costs steering power (a real trade-off).** Re-
-  measuring smile from *framing-free* A/B (no "close-up portrait" words) removes the zoom: on a full-body base
-  the clean axis holds framing where the original zooms to a face. **But** on a portrait base the clean axis
-  steers expression *much* more weakly (barely a smile at scale 6 vs a dramatic one for the original). So the
-  close-up context in the original A/B was **load-bearing for the signal**, not just incidental drag — you
-  can't trivially get a clean *and* strong axis by dropping framing words (higher scale on the clean axis is
-  untested). Tighter matched pairs help; they don't fully decouple.
-- **`amplify` CAN conjure a seemingly-absent axis at usable scale** — correcting the prior claim. Amplifying
-  the smile direction on a *no-face landscape* grows a full laughing face by scale 4. `amplify` is
-  `(1+scale)·(cond·d̂)·d̂`: a real prompt's projection onto `d̂` is never exactly zero, and the direction
-  carries coupled "face presence," so a small residual blows up into the concept. It is **not** a reliable
-  "is the concept present?" test (`concept_directions.md` corrected).
-
-![Grid A — labeled-axis steering strength: rows = four benign axes ordered by direction consistency (smile 0.98 > detail 0.71 > wide_shot 0.59 > warm_light 0.52); projector pass-through is the reverse of the row order (smile 0.63 lowest, warm_light 0.96 highest). Cols = amplify scale on a neutral "person in a room" base, same seed. The top row (smile) steers hardest and the bottom (warm_light) barely moves — opposite to what pass-through would predict.](figures/labeled_axis_strength.png)
-
-*Grid A: rows = axis ordered by **direction consistency** (high→low); projector pass-through runs the reverse
-of the row order. Cols = amplify scale on a neutral base. smile (top) steers hardest, warm_light (bottom)
-barely moves — so pass-through does **not** predict steerability, and consistency is the better (if imperfect —
-wide_shot outpunches detail) proxy.*
-
-![amplify-conjures control (two rows): row 1 amplifies the "smile" direction on a no-face mountain-landscape base; row 2 on a portrait base (positive control). Cols = amplify scale. On the landscape a full laughing face grows out of the empty mountains by scale ~4; the portrait smiles as expected — so amplify is a magnitude lever that can conjure an apparently-absent axis, not a presence gate.](figures/labeled_axis_amplify_conjures.png)
-
-*Rows = base (row 1 = no-face landscape, row 2 = has-face portrait positive control); cols = amplify scale. By
-scale ~4 a face appears from the empty landscape — refuting "amplify can't conjure an absent axis." `amplify`
-scales the (never-exactly-zero) present component, so a small residual blows up into the concept.*
-
-![clean-vs-coupled smile axis: the original close-up-A/B smile direction vs a framing-free A/B smile direction, swept by amplify scale on a portrait base. The original drags a close-up zoom; the framing-free axis holds framing but steers expression much more weakly — a clean-vs-strong trade-off.](figures/labeled_axis_clean_vs_coupled.png)
-
-*Original (close-up A/B) smile axis vs a framing-free smile axis. Cleaning the co-varied zoom costs steering
-strength — the close-up context was load-bearing, so a clean **and** strong axis isn't free.*
-
-**Takeaway.** "Steer a named axis on purpose" is achievable but bounded: consistency (cheap) beats the
-fusion-pass-through metric for predicting *which* axes steer; every axis drags its A/B co-variation; cleaning
-that drag with tighter pairs trades against signal strength; and `amplify` is a magnitude lever that conjures
-at high scale, not a presence gate.
