@@ -2,8 +2,10 @@
 
 Last updated: 2026-06-29
 
-This doc collects every Krea 2 text-conditioning finding, **grouped into three themes** (figures inline under
-each section):
+**Headline:** Krea 2's text conditioning is **steerable** — most cleanly from the *prompt side* (a `<think>`
+block acts as a steering vector), and also by editing the learned layer-fusion. Under the hood, the 12 encoder
+layers fuse through a measured **L20 attention hub** and a **contrastive "mid-minus-deep" projector**. The
+results below are grouped into three themes (figures inline under each section):
 
 - **What each selected layer carries** — the solo / leave-one-out layer probes (the TLDR table below), the
   cross-style check, and an honest novelty calibration.
@@ -16,31 +18,34 @@ each section):
 
 <a id="layer-probes" name="layer-probes"></a>
 
+## Theme A — what each selected layer carries (solo / leave-one-out probes)
+
 Basis: solo (keep-one) + leave-one-out (drop-one) sweeps on **one prompt** (portrait), seed 42,
 Krea2 **Turbo fp8**, 8 steps euler/simple, image-level **RGB-RMS** distance. Cross-style sweeps
 (anime, illustration) are done — see the Cross-style update below.
 
 | # | Finding | Confidence | Why / caveat |
 |---|---------|-----------|--------------|
-| 1 | **Deep selected layers carry the renderable content; shallow are scaffolding.** Solo L23/L26/L29/L32 each render a coherent portrait alone; L2–L11, L17, L20 alone → noise. | **High** (this prompt) / Medium (general) | Agrees with the learned projector (deep layers have the largest \|weights\|) and the tech report ("final layer optimized for next-token prediction, not image gen"). Generality pending cross-style. |
-| 2 | **L14 uniquely carries text/typography.** Solo L14 → text glyphs, despite a prompt with no text. | **Medium-High** | Striking, clean single-layer signal, but one prompt and the prompt had no text. Needs a text-containing prompt + cross-style to confirm. The most surprising solo probe, but modest. |
+| 1 | **Deep selected layers carry the renderable content; shallow are scaffolding.** Solo L23/L26/L29/L32 each render a coherent portrait alone; L2–L11, L17, L20 alone → noise. | **High** (this prompt) / Medium (general) | Agrees with the learned projector (deep layers have the largest \|weights\|) and the tech report ("final layer optimized for next-token prediction, not image gen"). Generality confirmed by the cross-style sweep (below). |
+| 2 | **L14 carries structure/layout** (first read as "text/typography"). Solo L14 → text glyphs in the portrait, road/scene structure in the illustration. | **Medium-High** | Refined by the cross-style sweep (below): not purely text — structure/layout. Clean single-layer signal that holds across styles. |
 | 3 | **The final layer (L35) alone is unusable for image gen** (noise). | **High** | Directly confirms the tech report's rationale for multilayer aggregation. |
 | 4 | **Necessity ≠ sufficiency: deep layers are partly redundant.** Drop-one keeps everything coherent (11 layers remain). L29 most necessary (Δ=0.35), then L32 (0.25), L23 (0.20); **L26 is sufficient-alone but low drop-importance (0.15) → redundant.** | **Medium** | Ranking from a coarse RGB-RMS metric, one prompt/seed. Direction (deep > shallow) trustworthy; exact order (e.g. L29 vs L32) low confidence. |
 | 5 | **The model's learned aggregation agrees with the ablations.** Largest-\|weight\| layers (L23, L29, L32, L26) are the ones that render alone and/or matter most when dropped. | **Medium-High** | Two independent signals cross-check (learned projector vs causal ablation). |
 
-## Confidence summary
+### Confidence summary
 
 - **High:** deep-carry-content / shallow-scaffold / final-layer-unusable — architecturally grounded + visually unambiguous.
-- **Medium:** L14 = text; redundancy among deep layers.
+- **Medium:** L14 = structure/layout (refined from an initial "text" read); redundancy among deep layers.
 - **Low:** exact importance ordering (coarse metric, n=1 prompt/seed).
-- **Pending:** cross-style generality (running); precise numbers (conditioning-space leave-one-out + gain-Jacobian via the `txtfusion` extractor, no generation needed).
+- **Done:** cross-style generality — the pattern held across photo / anime / illustration (see Cross-style update below).
+- **Pending:** precise numbers (conditioning-space leave-one-out + gain-Jacobian via the `txtfusion` extractor, no generation needed).
 
-## Caveats bounding all of the above
+### Caveats bounding all of the above
 
 Single prompt, single seed, Turbo **fp8** (quantized), **image-level** RGB-RMS distance (not perceptual,
 not conditioning-space). These bound confidence; the extractor + cross-style sweeps are how we tighten it.
 
-## Cross-style update (2026-06-26)
+### Cross-style update (2026-06-26)
 
 Ran solo + leave-one-out on **anime** and **illustration** too. The pattern **held across all 3 styles**:
 deep layers (L23/26/29/32) render alone, shallow = noise, and the leave-one-out ranking is consistent
@@ -48,7 +53,7 @@ deep layers (L23/26/29/32) render alone, shallow = noise, and the leave-one-out 
 **structure/layout** (text glyphs in the portrait, road/scene structure in the illustration), not purely
 "text". Cross-style consistency moves findings 1 & 3 toward **High**.
 
-## Is any of this novel? (honest calibration)
+### Is any of this novel? (honest calibration)
 
 Mostly **expected**, and worth saying plainly:
 - "deep = semantic, shallow = lexical/scaffold" is standard LLM-layer interpretability.
@@ -60,15 +65,17 @@ So the solo/LOO work is **verification + reproducible artifacts + the (mild) L14
 not a discovery. The genuinely model-specific questions it raised — now **addressed** below:
 1. **The combination mechanism** — answered: the layer-fusion routes through an **L20 directional hub**
    (see "Layer-fusion attention"). ✓
-2. **Attribute-level** — answered: benign attributes (expression / "wet" / blush) **survive the aggregation**,
+2. **Attribute-level** — answered: benign attributes (expression, sheen, blush) **survive the aggregation**,
    and the projector/fusion is *not* where they're gated (see "Attributes vs the projector-rebalance lever"). ✓
 3. **Where the bias lives** — answered: the encoder is **frozen stock `Qwen/Qwen3-VL-4B-Instruct`** (Krea's
    loading code does `from_pretrained` + `.eval().requires_grad_(False)`; its config is field-for-field
    identical to stock), so all learned aggregation is **DiT-side**. ✓
 
+## Theme B — how the 12 layers fuse into one vector
+
 <a id="layer-fusion" name="layer-fusion"></a>
 
-## Layer-fusion attention — measured behavior (2026-06-26)
+### Layer-fusion attention — measured behavior (2026-06-26)
 
 Built the `txtfusion` extractor (CPU; loads the Krea2 CLIP for the 12 hidden states + the DiT's txtfusion
 weights, recomputes the layerwise attention).
@@ -132,9 +139,9 @@ attends mostly to itself + near neighbors, with no dominant sink. Structurally u
 
 <a id="attributes" name="attributes"></a>
 
-## Attributes vs the projector-rebalance lever (2026-06-26)
+### Attributes vs the projector-rebalance lever (2026-06-26)
 
-Difference-of-means + causal tests on benign attributes (expression / "wet" / blush):
+Difference-of-means + causal tests on benign attributes (expression, sheen, blush):
 - **Conditioning (net-effect through `txtfusion`):** these attributes come through the learned aggregation
   *more* strongly than ordinary content controls (mean relative footprint 0.14 vs 0.04; A=out/in 1.2 vs 0.46).
 - **Causal (with/without in the prompt):** each attribute renders clearly on stock Turbo.
@@ -147,7 +154,7 @@ behaves as a detail/intensity knob. Caveats: a few prompts/seeds, controls not m
 attributes only (not near-safety-boundary cases), visual + correlational rather than a hard metric.
 Data in `data/attribute_directions/` (probe + causal + stock-vs-rebalanced grids).
 
-## Projector-LoRA A/B — result (2026-06-26)
+### Projector-LoRA A/B — result (2026-06-26)
 
 The community hand-rebalances the projector; the trainers can *learn* it (diffusers + musubi target
 `text_fusion.projector` by default; ai-toolkit excludes it). Tested whether **training** the 12→1 layer-mix
@@ -165,9 +172,11 @@ Caveats: quick proof — tiny dataset, 300 steps, rank 16, one validation seed, 
 not a *style* LoRA (where the semantic-depth layer-mix might matter more), NF4-quantized. Doesn't rule out the
 projector mattering in a longer or style-focused run. Data: `data/projector_ab/`.
 
+## Theme C — steering levers
+
 <a id="prompt-side-think-steering" name="prompt-side-think-steering"></a>
 
-## Prompt-side steering: a `<think>` block (or system prompt) as a steering vector (2026-06-27)
+### Prompt-side steering: a `<think>` block (or system prompt) as a steering vector (2026-06-27)
 
 Every lever above is a **weight/activation** edit (projector rebalance, single-layer isolation). This one is
 **prompt-side**, and it's cleaner.
@@ -222,16 +231,15 @@ the assistant `<think>` turn** (both survive). A **system-turn** prompt does **n
 tokens are sliced off — and can only influence the result **indirectly** (the surviving tokens attended back
 over the system prefix during the causal encoder pass). That refines the earlier "system prompts work too":
 they may nudge via attention contamination, but they are not a direct write-point the way the think block is.
-(This is also the EXP4 prefix-strip audit — answered here.)
 
 **Confidence: low–medium** on the visual result — a believable-direction outcome, not a measured effect size
 (1 subject, 2 seeds, 4 expressions, single visual read; identity drifted slightly on one cell — steering
 moves a bit more than the one attribute you aim at). The tokenization/strip facts above are **high** (runtime
-verified). Untested twin: does a system-turn prompt steer *at all* through the indirect path? A labeled-axis
-follow-up (extract a named direction from a model pair, check whether the projector passes it, then steer with
-±it) would turn this from "steering works" into "steer along a *named* axis on purpose".
+verified). Untested twin: does a system-turn prompt steer *at all* through the indirect path? The named-axis
+follow-up this pointed to is **now done** — see **Labeled-axis steering** below: it turns "steering works"
+into "steer a *named* axis on purpose, and predict in advance whether it will".
 
-## The Turbo-LoRA strength dial — a de-distillation lever (2026-06-28)
+### The Turbo-LoRA strength dial — a de-distillation lever (2026-06-28)
 
 All the levers above edit conditioning. This one edits the **DiT** path, and it's a clean continuous dial.
 Krea 2's Turbo LoRA *is* the distillation delta (`Turbo ≈ RAW + 1.0·delta`), so its strength is a
@@ -276,7 +284,7 @@ recovering the CFG/negative-prompt guidance that distillation removed. The cost 
 table, practical recipe, and the five probe figures (strength · cfg headroom · negative branch · steps ·
 scheduler).
 
-## Two-sampler split: RAW high-noise → Turbo low-noise (2026-06-28)
+### Two-sampler split: RAW high-noise → Turbo low-noise (2026-06-28)
 
 The strength dial above moves one model uniformly; this moves *per step* — a high-noise model for the first
 `boundary` steps, a low-noise model for the rest, on one shared schedule (Wan-2.2-style leftover-noise
@@ -306,7 +314,7 @@ restores diversity at Turbo-sharp quality. Full figure set (cfg headroom, negati
 
 <a id="labeled-axis" name="labeled-axis"></a>
 
-## Labeled-axis steering — what predicts it, and how clean is an axis? (2026-06-29)
+### Labeled-axis steering — what predicts it, and how clean is an axis? (2026-06-29)
 
 Goal: turn "steering works (vaguely)" into "steer a *named* axis on purpose, and predict in advance whether
 it will." Measured a difference-of-means direction for four benign axes (smile / detail / wide_shot /
