@@ -78,3 +78,10 @@ def test_turbo_lora_preset_is_raw_plus_turbo_lora():
     assert p["unet"] == DEFAULT_RAW_UNET                    # RAW checkpoint
     assert p["loras"] == ((TURBO_LORA, 1.0),)              # plus the Turbo LoRA -- the de-distillation dial
     assert (p["steps"], p["cfg"]) == (8, 1.0)
+
+
+def test_pick_vae_falls_back_to_stock_when_absent():
+    from generate import _pick_vae, DEFAULT_VAE, STOCK_VAE
+    assert _pick_vae([DEFAULT_VAE, STOCK_VAE]) == DEFAULT_VAE   # preferred present -> use it
+    assert _pick_vae([STOCK_VAE]) == STOCK_VAE                  # preferred absent -> fall back to stock
+    assert _pick_vae([]) == STOCK_VAE                          # nothing available -> stock

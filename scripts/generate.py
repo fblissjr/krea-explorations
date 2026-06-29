@@ -29,7 +29,10 @@ from pathlib import Path
 DEFAULT_UNET = "krea2_turbo_fp8_scaled.safetensors"
 DEFAULT_RAW_UNET = "krea2_raw_fp8_scaled.safetensors"
 DEFAULT_CLIP = "qwen3vl_4b_fp8_scaled.safetensors"
-DEFAULT_VAE = "qwen_image_vae.safetensors"
+# krea2RealVae = the community detail VAE (spacepxl's upscale2x decoder, sub-pixel head averaged to 3ch so it
+# drops in via the stock VAELoader). Crisper skin/texture than the stock qwen_image_vae; STOCK_VAE is the fallback.
+DEFAULT_VAE = "krea2RealVae_v10.safetensors"
+STOCK_VAE = "qwen_image_vae.safetensors"
 TURBO_LORA = "krea2_turbo_lora_rank_64_bf16.safetensors"
 
 # ComfyUI cfg = reference guidance + 1 (Krea: v = cond + g*(cond-uncond); ComfyUI: uncond + cfg*(...)).
@@ -231,6 +234,21 @@ def _parse_lora(spec):
     return (name, float(strength) if strength else 1.0)
 
 
+def _pick_vae(available, preferred=DEFAULT_VAE, fallback=STOCK_VAE):
+    """Return `preferred` if it's in the `available` VAE list, else `fallback`. Lets the default be the
+    community krea2RealVae without breaking for anyone who hasn't downloaded it."""
+    return preferred if preferred in available else fallback
+
+
+def resolve_vae(server, preferred=DEFAULT_VAE, fallback=STOCK_VAE):
+    """Pick `preferred` if the ComfyUI server has it, else `fallback` (stock qwen_image_vae)."""
+    try:
+        info = json.loads(urllib.request.urlopen(server + "/object_info/VAELoader", timeout=10).read())
+        return _pick_vae(info["VAELoader"]["input"]["required"]["vae_name"][0], preferred, fallback)
+    except Exception:
+        return fallback
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("prompt", nargs="?", help="prompt text (or use --prompt-file)")
@@ -239,7 +257,7 @@ def main():
     ap.add_argument("--preset", choices=list(PRESETS), default="turbo")
     ap.add_argument("--unet", default=None, help="checkpoint filename; defaults to the checkpoint for --preset")
     ap.add_argument("--clip", default=DEFAULT_CLIP)
-    ap.add_argument("--vae", default=DEFAULT_VAE)
+    ap.add_argument("--vae", default=None, help="VAE filename; default = krea2RealVae if present, else stock")
     ap.add_argument("--negative", default="")
     ap.add_argument("--steps", type=int, help="override preset steps")
     ap.add_argument("--cfg", type=float, help="override preset cfg")
@@ -263,8 +281,9 @@ def main():
     steps = int(a.steps or p["steps"])
     cfg = float(a.cfg if a.cfg is not None else p["cfg"])
     unet = a.unet or p["unet"]                                   # --preset picks its checkpoint unless overridden
+    vae = a.vae or resolve_vae(a.server)                         # krea2RealVae if the server has it, else stock
     loras = list(p["loras"]) + [_parse_lora(x) for x in a.lora]  # preset LoRAs first, then any --lora, in order
-    g = build_graph(prompt, unet=unet, clip=a.clip, vae=a.vae, negative=a.negative,
+    g = build_graph(prompt, unet=unet, clip=a.clip, vae=vae, negative=a.negative,
                     steps=steps, cfg=cfg, seed=a.seed, width=a.width, height=a.height,
                     sampler=a.sampler, scheduler=a.scheduler,
                     loras=loras, sage=a.sage)

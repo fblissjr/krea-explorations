@@ -59,6 +59,10 @@ The effect is close to a switch rather than a dial:
 
 At 8 steps, eta 1.0 leaves grain the steps cannot resolve. Eta around 0.5 is a clean default. Drop to 0 when you want the result to be reproducible.
 
+## Choosing a VAE
+
+Krea 2's stock VAE (`qwen_image_vae`) is tuned for legible text, not photoreal texture, so it looks soft on skin and fine detail. The toolkit defaults to krea2RealVae, a community decoder finetune that drops in through the stock VAE loader and is crisper on texture, and it falls back to the stock VAE automatically when krea2RealVae is not installed (`resolve_vae` in `scripts/generate.py`). For a 2x-resolution decode, use spacepxl's Wan2.1-VAE-upscale2x through the `ComfyUI-VAE-Utils` node. Full analysis and build provenance: [krea2_vae.md](krea2_vae.md).
+
 ## The canonical workflows
 
 Four reference recipes, named A to D, cover the common cases. All use the modular graph and the Turbo LoRA on a RAW checkpoint rather than a separate Turbo checkpoint.
@@ -90,5 +94,6 @@ The presets fix steps, CFG, the checkpoint and any LoRAs together: `turbo` (Turb
 
 ## Related guides
 
+- [krea2_vae.md](krea2_vae.md) compares the VAE decoders and explains the krea2RealVae default
 - [findings.md](findings.md) records the measurements behind these choices
 - [concept_directions.md](concept_directions.md) covers steering the conditioning with a measured direction
