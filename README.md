@@ -58,7 +58,8 @@ Full write-up, figures and confidence levels are in [`docs/findings.md`](docs/fi
   an axis survives the fusion does not predict how well it steers, and `amplify` is a magnitude lever that can
   conjure a concept at high scale — not a presence test. → [labeled-axis steering](docs/findings.md#labeled-axis)
 - **Two de-distillation levers.** Krea 2's Turbo LoRA is the distillation delta, so its strength is a
-  continuous RAW↔Turbo dial; a RAW→Turbo two-sampler split buys seed diversity and clean CFG headroom.
+  continuous RAW↔Turbo dial (sweet spot stays at cfg 1, `s0.6–0.8`); and a per-stage split — low-strength
+  high-noise → Turbo finish — adds seed diversity at single-pass cost.
   → [Turbo-LoRA dial](docs/turbo_lora_strength.md) · [two-sampler split](docs/two_sampler_split.md)
 
 These findings characterize the trained model's behavior, read off the open weights — they are not architecture

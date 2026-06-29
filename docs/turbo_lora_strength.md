@@ -1,4 +1,4 @@
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 # The Turbo-LoRA strength dial (de-distillation lever)
 
@@ -17,10 +17,53 @@ two checkpoints are the same model at two points on it. The strength can be read
 | 1.0 | 0.0 | Turbo |
 | 1.2 | +0.2 | slightly over-distilled |
 
-This doc characterizes what moving along that dial does. **Confidence: low–medium** — one prompt
-(`examples/test_prompts/nightclub.txt`), a few seeds, fp8 checkpoints, visual read on a 24 GB card. Treat as
-orientation, not calibrated numbers. Probes are throwaway scripts over `scripts/generate.build_graph` (no
-committed tooling); grids are gitignored under `data/`, the figures here are the saved copies.
+This doc characterizes what moving along that dial does. **Confidence: low–medium** — visual read on a 24 GB
+card, orientation not calibrated numbers. The **headline (sweet spot, negative mechanism, diversity
+correction) is from a 2026-06-29 open-scene re-run — see the Update below**; §1–§5 are the original
+dense-prompt characterization (`examples/test_prompts/nightclub.txt`, a few seeds, fp8). Probes are throwaway
+scripts over `scripts/generate.build_graph`; grids are gitignored under `data/`, the figures here are saved copies.
+
+## Update 2026-06-29 — open-scene re-run (sweet spot · negative mechanism · diversity correction)
+
+Re-ran the dial on an **open scene with a subject** (replacing the single dense prompt). Three refinements:
+
+**Which config (quality vs compute).** Quality plateaus fast, and the whole useful range stays at **cfg 1**
+(ComfyUI skips the uncond pass there → half the compute). `s0.8 / 8 steps / cfg 1` is the efficiency pick
+(matches Turbo at 8 evals); `s0.6 / 12 steps / cfg 1` is the best all-rounder (a touch more detail and seed
+headroom for 1.5× compute). cfg > 1 only earns its 2–7× when you need CFG/negative steering, not for "more
+quality." This supersedes §1's "usable band 0.8–1.2" framing (which conflated quality with cfg-1 softness).
+
+![Quality-vs-compute sweet spot: one subject, five configs left→right — Turbo (s1.0, 8/cfg1, 8 evals), A (s0.8, 8/cfg1, 8ev), B (s0.6, 12/cfg1, 12ev), C (s0.5, 12/cfg2.5, 24ev), RAW (s0, 28/cfg5.5, 56ev). Quality plateaus fast; Turbo and A are near-identical.](figures/turbo_lora_sweet_spot.png)
+
+*Quality vs compute. Quality plateaus early and the useful range stays at cfg 1; cfg > 1 (C/RAW) only earns its
+2–7× for guidance, not quality.*
+
+**CFG headroom grows as strength drops.** Turbo (s1.0) burns above cfg ~2.5 — at cfg 4 the face goes
+blown-white; s0.5 and RAW tolerate cfg 4 cleanly. So cfg > 1 is only usable once strength drops below ~0.8.
+
+![Turbo-LoRA strength × cfg on an open scene: rows = strength 1.0 / 0.75 / 0.5 / 0.25, cols = cfg 1.0 / 2.5 / 4.0, real negative. Only s1.0 × cfg 4 blows out (top-right); the burn clears as strength drops.](figures/turbo_lora_cfg_burn.png)
+
+*Rows = strength, cols = cfg. The burn (top-right, s1.0/cfg4) clears down the rows — cfg headroom grows as
+strength drops.*
+
+**The negative is inert at cfg 1 — use a real empty negative, never `ConditioningZeroOut`.** At cfg 1 the
+uncond pass is skipped, so a real negative and `ConditioningZeroOut` are byte-identical; the negative only acts
+at cfg > 1 (and even there is a weak semantic lever, §3). The catch: **`_cfg_pp` samplers use the uncond even
+at cfg 1**, and `ConditioningZeroOut` feeds them a degenerate uncond → grain. This sharpens §3.
+
+![Negative-branch mechanism: one subject, four arms at cfg 1 — euler + ZeroOut, euler + real-empty-negative, euler_cfg_pp + ZeroOut, euler_cfg_pp + real-empty-negative. Only euler_cfg_pp + ConditioningZeroOut is grainy.](figures/turbo_lora_negative_cfgpp.png)
+
+*At cfg 1 the uncond is skipped for plain euler (cols 1–2 identical), but `_cfg_pp` samplers still use it, and
+`ConditioningZeroOut` hands them a degenerate uncond → the only grainy cell (col 3). Use a real empty negative.*
+
+**Diversity correction (supersedes §1's "seed diversity rises as strength falls").** Uniform de-distillation
+strength is **not** a universal diversity lever: on an **open scene Turbo already varies** across seeds (flat
+~45–48 as strength drops 1.0→0.6). Only *constrained/dense* prompts collapse under Turbo. The genuine free
+diversity lever is the **per-stage split**, not uniform strength — see
+[`two_sampler_split.md`](two_sampler_split.md).
+
+The §1–§5 figures below are the original dense-prompt runs; §2 (cfg headroom), §4 (steps) and §5 (scheduler)
+remain valid, while §1's diversity claim and §3's "active but weak" are superseded by the notes above.
 
 ## 1. At Turbo's native config (8 steps, cfg 1), the dial is a quality ramp
 
@@ -36,8 +79,10 @@ committed tooling); grids are gitignored under `data/`, the figures here are the
     distillation diversity collapse).
   - **1.2** (Turbo +0.2): **punchier / more saturated**, more table detail — over-distillation *adds pop*
     here rather than breaking (it only breaks at high cfg, §2).
-- **Seed diversity rises as strength falls** (RAW seeds differ a lot; Turbo seeds barely) — but in the usable
-  0.8–1.0 band the diversity difference is marginal at 8 steps. (A dedicated diversity-distillation test —
+- **Seed diversity rises as strength falls** — *[superseded by the 2026-06-29 Update: true only on this
+  constrained/dense prompt; on open scenes Turbo already varies across seeds]*. (RAW seeds differ a lot; Turbo
+  seeds barely here, but in the usable 0.8–1.0 band the difference is marginal at 8 steps.) (A dedicated
+  diversity-distillation test —
   base-model-for-the-first-step, arXiv:2503.10637 — was a **null** on Krea 2's flow schedule; only this
   global-strength axis moves diversity. Recorded internally, not pursued.)
 
@@ -56,7 +101,7 @@ Turbo is distilled to run CFG-disabled (cfg 1, no negative). Backing the strengt
 - **RAW (0.0) *requires* cfg>1** — washed out at cfg 1, only looks right at cfg ≳ 2.5.
 - Practical window for a de-distilled run: **strength ~0.5, cfg ~2.5–4, ~16 steps**.
 
-## 3. The negative branch is active but did not strongly steer
+## 3. The negative branch is active but did not strongly steer *(sharpened by the 2026-06-29 Update: inert at cfg 1; use a real empty negative, never `ConditioningZeroOut`)*
 
 ![Negative isolation: rows = strength, cols = empty / anti-blur / anti-lamp negative, at fixed cfg 3.](figures/turbo_lora_negative_branch.png)
 

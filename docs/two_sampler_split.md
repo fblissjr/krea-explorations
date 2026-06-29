@@ -1,4 +1,4 @@
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 # Two-sampler split (RAW high-noise → Turbo low-noise)
 
@@ -35,19 +35,51 @@ g = build_split_graph(prompt,
 negative when >1); `cfg_low` the Turbo finish (1 = CFG-off, the Turbo native). Pass `lora_low=<turbo LoRA>`
 to use one RAW checkpoint + the Turbo LoRA on the finish instead of loading a second checkpoint.
 
-**Confidence: low–medium** — one or two prompts, ≤3 seeds, fp8, visual read on a 24 GB card. Orientation, not
-calibrated numbers. Probes are throwaway scripts over the builder; grids are gitignored under `data/`, the
-figures here are saved copies.
+**Confidence: low–medium** overall (one or two prompts, ≤3 seeds, fp8, visual read on a 24 GB card; orientation,
+not calibrated numbers) — **medium** on the diversity result after the open-scene re-run below (n=2 scenes).
+Probes are throwaway scripts over the builder; grids are gitignored under `data/`, the figures here are saved copies.
 
-## 1. What it buys: seed/compositional diversity at near-Turbo quality
+## Update 2026-06-29 — open-scene re-run (corrects the diversity claim)
+
+The original §1 read ("Turbo collapses seed diversity") was measured on **constrained/dense** prompts. Re-running
+on an **open scene** splits the diversity story into two mechanisms:
+
+- **Uniform de-distillation strength is not a universal diversity lever.** On an open scene Turbo *already*
+  varies across seeds — cross-seed difference is flat (~45–48) as strength drops 1.0→0.6 (the 0.4 uptick is
+  softness, not new composition). Only constrained/dense prompts collapse under Turbo, so lowering strength
+  trades CFG headroom and detail, not variety.
+
+![Seed diversity vs Turbo-LoRA strength on an open scene (a figure in a misty mountain valley): rows = strength 1.0 / 0.8 / 0.6 / 0.4 with the cross-seed diversity metric, cols = seed 42 / 123 / 314, cfg 1. The metric is flat ~45–48 from strength 1.0 to 0.6 — uniform de-distillation adds no cross-seed variety here.](figures/two_sampler_uniform_diversity.png)
+
+*Uniform strength on an open scene: cross-seed diversity is flat (~45–48) from 1.0→0.6 — strength alone is not a
+diversity lever here. (Pixel-diff metric; it saturates on busy scenes.)*
+
+- **The per-stage split is a genuine free diversity lever, even on open scenes.** Low-strength (or RAW)
+  high-noise → full-Turbo finish re-rolls composition across seeds at **cfg 1 and the same 8-eval cost** as
+  single-pass, quality held — the variety comes from the split's high-noise composition phase. Visually
+  consistent on 2 scene types (landscape + street). A strong candidate for the recommended default when you
+  want seed variety; single-pass Turbo is the simpler fallback.
+
+![Single-pass vs per-stage split on an open scene: rows = single-pass A (s0.8), split T0.4→T1.0 (cfg 1, 8 evals), split RAW→T1.0 (cfg 2.5); cols = seed 42 / 123 / 314. The two split rows re-roll composition across seeds more than single-pass A.](figures/two_sampler_split_openscene.png)
+
+*Rows = single-pass A vs two splits; cols = seed. The cfg-1 `T0.4→T1.0` split (middle) adds cross-seed
+composition variety at single-pass cost — the free-diversity pick. (RAW→T1.0 at cfg 2.5 varies too but costs
+more and can letterbox, e.g. seed 314.)*
+
+Open follow-up: a composition-aware diversity metric — pixel-diff saturates on busy scenes (single-pass and
+split market-street rows both ~63 despite the split being visibly more varied). The §1–§3 figures below are the
+original dense/fox-prompt runs; they remain valid for the CFG-headroom (§2) and negative (§3) reads, which the
+re-run did not change.
+
+## 1. What it buys: seed/compositional diversity at near-Turbo quality (on constrained prompts)
 
 ![Boundary sweep: rows = boundary k (k0 = pure Turbo, k8 = pure RAW), cols = seed; RAW cfg 2.5 → Turbo cfg 1, 8 steps.](figures/two_sampler_split_diversity.png)
 
 *Rows = boundary `k` (k0 = pure Turbo control, k8 = pure RAW control); cols = seed. 8 steps total.*
 
-- **Turbo collapses seed diversity** (top row: three seeds, near-identical compositions). Letting RAW form
-  the high-noise steps restores it — by **k2–k3 the three seeds diverge** in framing/pose/composition while
-  staying sharp.
+- **Turbo collapses seed diversity *on this constrained/dense prompt*** (top row: three seeds, near-identical
+  compositions; see the Update above — open scenes already vary). Letting RAW form the high-noise steps restores
+  it — by **k2–k3 the three seeds diverge** in framing/pose/composition while staying sharp.
 - **The Turbo finish rescues RAW's low-step under-denoising.** Pure RAW at 8 steps (bottom row) is dark/hazy;
   but k1–k3 are Turbo-sharp — the low-noise stage cleans up RAW's coarse start.
 - **Sweet spot ≈ k2–3 of 8.** Past k4 the RAW tone bleeds in (warmer/darker). So you get RAW's compositional
