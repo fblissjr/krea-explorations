@@ -177,10 +177,13 @@ def run(graph, out_path, server="http://127.0.0.1:8188", timeout=600,
     for _ in range(int(timeout / poll)):
         time.sleep(poll)
         h = json.loads(urllib.request.urlopen(server + f"/history/{pid}", timeout=30).read())
-        if pid in h:
+        # wait for COMPLETED, not just present: ComfyUI lists the prompt in /history while it's still running
+        # (esp. during the first-render model load), so reading outputs on mere presence returns empty -> a
+        # spurious False. This was the real cause of the "first render after a restart fails" flakiness.
+        if pid in h and h[pid].get("status", {}).get("completed"):
             imgs = h[pid].get("outputs", {}).get("save", {}).get("images", [])
             if not imgs:
-                return False
+                return False  # completed with no 'save' output = errored, or a cached re-run (no fresh output)
             im = imgs[0]
             q = urllib.parse.urlencode({"filename": im["filename"],
                                         "subfolder": im.get("subfolder", ""),
