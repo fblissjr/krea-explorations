@@ -95,10 +95,12 @@ def test_high_stage_uses_real_negative_when_cfg_on():
     assert neg["inputs"]["text"] == "blurry, lowres"
 
 
-def test_low_stage_zeroes_out_negative_when_cfg_off():
+def test_low_stage_uses_real_negative():
+    # always a real CLIPTextEncode negative, never ConditioningZeroOut (both stages run RAW)
     g = _graph(cfg_low=1.0)
     _, low = _stages(g)
-    assert g[g[low]["inputs"]["negative"][0]]["class_type"] == "ConditioningZeroOut"
+    assert g[g[low]["inputs"]["negative"][0]]["class_type"] == "CLIPTextEncode"
+    assert "ConditioningZeroOut" not in {v["class_type"] for v in g.values()}
 
 
 def test_per_stage_lora_inserted_on_its_branch():

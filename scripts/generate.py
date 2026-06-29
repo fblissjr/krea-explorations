@@ -95,11 +95,11 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
     g["pos"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": prompt}}
     g["latent"] = {"class_type": "EmptyLatentImage",
                    "inputs": {"width": width, "height": height, "batch_size": 1}}
-    # Real negative conditioning when CFG is on; zeroed-out when CFG is off (Turbo).
-    if cfg > 1.0:
-        g["neg"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": negative}}
-    else:
-        g["neg"] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["pos", 0]}}
+    # Always a real (possibly empty) negative, never ConditioningZeroOut. ZeroOut only behaves on the pure
+    # distilled Turbo checkpoint; on RAW (incl. RAW+Turbo-LoRA) and with the CFG++ (_cfg_pp) samplers -- which
+    # use the uncond even at cfg 1 -- it produces grainy output. At cfg 1 with a normal sampler ComfyUI skips
+    # the uncond pass, so this is byte-identical to ZeroOut there (verified) and costs nothing.
+    g["neg"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": negative}}
     g["sampler"] = {"class_type": "KSampler",
                     "inputs": {"model": sampler_model, "positive": ["pos", 0], "negative": ["neg", 0],
                                "latent_image": ["latent", 0], "seed": seed, "steps": steps,
@@ -156,16 +156,13 @@ def build_split_graph(prompt, *, unet_high, unet_low, clip, vae, boundary,
     g["latent"] = {"class_type": "EmptyLatentImage",
                    "inputs": {"width": width, "height": height, "batch_size": 1}}
 
-    def neg_node(name, cfg):
-        # Real negative conditioning when CFG is on; zeroed-out when CFG is off.
-        if cfg > 1.0:
-            g[name] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": negative}}
-        else:
-            g[name] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["pos", 0]}}
+    def neg_node(name):
+        # Always a real (empty) negative, never ConditioningZeroOut (see build_graph) -- both stages run RAW.
+        g[name] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": negative}}
         return [name, 0]
 
-    neg_high = neg_node("neg_high", cfg_high)
-    neg_low = neg_node("neg_low", cfg_low)
+    neg_high = neg_node("neg_high")
+    neg_low = neg_node("neg_low")
 
     # Stage 1: high-noise model, real CFG, [0, boundary), KEEP the leftover noise for the handoff.
     g["s1"] = {"class_type": "KSamplerAdvanced",

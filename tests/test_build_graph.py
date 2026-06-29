@@ -57,9 +57,12 @@ def test_real_negative_when_cfg_on():
     assert neg["class_type"] == "CLIPTextEncode" and neg["inputs"]["text"] == "blurry"
 
 
-def test_zeroed_negative_when_cfg_off():
-    g = _g(cfg=1.0)
-    assert g[g["sampler"]["inputs"]["negative"][0]]["class_type"] == "ConditioningZeroOut"
+def test_real_negative_even_when_cfg_off():
+    # always a real CLIPTextEncode negative (never ConditioningZeroOut): safe at cfg1, required for _cfg_pp/RAW
+    g = _g(cfg=1.0, negative="grainy")
+    neg = g[g["sampler"]["inputs"]["negative"][0]]
+    assert neg["class_type"] == "CLIPTextEncode" and neg["inputs"]["text"] == "grainy"
+    assert "ConditioningZeroOut" not in {v["class_type"] for v in g.values()}
 
 
 def test_presets_specify_unet_and_loras():
