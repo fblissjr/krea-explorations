@@ -1,6 +1,6 @@
 # Concept directions — measure and dial any concept axis
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 A targeted generalization of the [projector-rebalance lever](findings.md). The rebalance lever scales whole
 *layers* of the conditioning; this aims at a **single measured concept direction** and amplifies, injects, or
@@ -35,10 +35,14 @@ The node applies `d` (unit-normalized as `d̂`) per token, in one of four modes:
 | `subtract` | `cond -= scale · d̂` |
 | `project_out` | `cond -= (cond·d̂) d̂` — remove the concept entirely. |
 
-**Key property (and a built-in sanity check):** `amplify` only scales what is *already* in the conditioning, so
-it mathematically **cannot conjure an absent concept** — if the axis isn't represented for a prompt, amplify at
-any scale leaves it unchanged. That makes the node double as a test of whether a concept is present in the
-aggregation at all.
+**`amplify` scales the *present* component — but it is NOT a reliable "is the concept present?" test.** It
+adds `(1+scale)·(cond·d̂)·d̂`, so at low scale it mostly intensifies what's already there. But a real prompt's
+projection `cond·d̂` is essentially never exactly zero, and a measured direction carries whatever co-varied in
+its A/B pair — so at higher scale `amplify` blows a small residual up into the concept. Measured: amplifying a
+"smile" direction on a *no-face landscape* grows a full laughing face by scale ~4 (see
+[`findings.md`](findings.md), "Labeled-axis steering"). Treat `amplify` as a magnitude lever that *can*
+conjure, not a presence gate; and expect it to drag the axis's co-varied attributes (e.g. expression → close-
+up framing) — tighter, attribute-only A/B prompts reduce that drag but cost some steering strength.
 
 ## Usage
 

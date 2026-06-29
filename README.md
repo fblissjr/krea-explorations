@@ -1,6 +1,6 @@
 # krea2-explorations
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 Research repo **how Krea 2 combines its text-encoder layers** (its "multilayer feature aggregation") and how that
 conditioning can be **steered** — plus a small, dependency-light toolkit to reproduce the measurements. The
@@ -46,12 +46,9 @@ well as or better than the deep-band rebalance lever, with adherence intact. A C
 the selected hidden states ~17–24% along their own dominant axis (0.86 direction consistency, energy at the
 L20/L23 hub): it behaves like a **steering vector**.
 
-![Krea 2 Turbo, same seed, four expressions across three columns — stock prompt, + a `<think>` block, and + the deep-band rebalance lever. The in-distribution `<think>` block restores the distillation-flattened intense expressions (furious, terrified) as well as or better than the weight-space rebalance lever, with prompt adherence intact.](docs/figures/think_steering_grid.png)
-
-*Same seed (#123); only the column lever changes. The `<think>` block (middle) restores Turbo's
-distillation-flattened expression in-distribution, matching or beating the deep-band rebalance lever (right)
-without leaving the data manifold. `joyful` (bottom) is a control — it isn't a flattened expression, so it
-renders in every column.*
+The expression grid for this result — same seed, four expressions × {stock, `<think>` block, deep-band
+rebalance} — is in
+[`docs/findings.md` → Prompt-side steering](docs/findings.md#prompt-side-think-steering).
 
 Two implementation details, **verified by running Comfy's actual Krea 2 tokenizer** (not assumed): (1) the
 special tokens are tokenized per the model's config — `<think>`/`</think>`/`<|im_start|>` each map to a single
@@ -133,9 +130,10 @@ it contributes.
 
 A targeted generalization of the projector-rebalance lever: instead of scaling whole layers, **measure one
 concept direction** from an A/B prompt pair and **amplify / inject / project-out** it in the conditioning.
-`amplify` boosts only the component already present, so it can't conjure an absent concept — which also makes
-it a quick test of whether the axis is represented at all. Works on any axis the encoder represents
-(expression, style, lighting, pose, an attribute).
+`amplify` intensifies the component along the measured axis; at high scale it can *conjure* the concept from a
+near-zero residual (it's a magnitude lever, not a presence gate — see [findings](docs/findings.md)). Works on
+any axis the encoder represents (expression, style, lighting, pose, an attribute), and drags whatever co-varied
+in the A/B pair — tighter matched prompts reduce that.
 
 **Turnkey, all in ComfyUI:** wire two `CLIPTextEncode` nodes (concept present / absent) into **Krea 2 Concept
 Direction**, feed its output into **Krea 2 Concept Inject** with your prompt, and dial a slider — no terminal,
@@ -150,16 +148,6 @@ uv run --active python scripts/concept_direction.py examples/concept_directions.
 ```
 
 Full guide, modes, and the math: [`docs/concept_directions.md`](docs/concept_directions.md).
-
-## Reverse-caption probing
-
-We also use a reverse-caption loop (image → dense caption from a vision LLM → regenerate) to derive dense
-test prompts from reference images. Example captions are in
-[`examples/test_prompts/`](examples/test_prompts/). The image-to-text system prompt used to produce them:
-
-```
-Describe the image by detailing the color, shape, size, texture, quantity, text, and spatial relationships of the objects and the background. Write a single cohesive paragraph (no lists or markdown), as a dense text-to-image caption. Open by naming the actual medium/style (e.g. photograph, painting, illustration, 3D render — but identify what it truly is). Cover composition and framing, the main subject(s) and their attributes, and the lighting. Put any visible text in quotes, exactly. Be specific and grounded — describe only what is actually visible; do not invent details, intent, or backstory.
-```
 
 ## Prior work
 

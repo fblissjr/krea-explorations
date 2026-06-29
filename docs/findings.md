@@ -1,6 +1,18 @@
-# Findings TLDR — Krea2 selected-layer probes
+# Findings — Krea 2 conditioning probes (layers · fusion · steering)
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
+
+This doc collects every Krea 2 text-conditioning finding, **grouped into three themes** (figures inline under
+each section):
+
+- **What each selected layer carries** — the solo / leave-one-out layer probes (the TLDR table below), the
+  cross-style check, and an honest novelty calibration.
+- **How the 12 layers fuse into one vector** — the layer-fusion attention (the L20 hub + contrastive
+  projector), attributes through the fusion, and the projector-LoRA A/B.
+- **Steering levers** — prompt-side `<think>`, the Turbo-LoRA strength dial, the two-sampler split, and
+  labeled-axis steering.
+
+---
 
 Basis: solo (keep-one) + leave-one-out (drop-one) sweeps on **one prompt** (portrait), seed 42,
 Krea2 **Turbo fp8**, 8 steps euler/simple, image-level **RGB-RMS** distance. Cross-style sweeps
@@ -64,6 +76,11 @@ below is the *learned behavior* of that attention (which layer it concentrates o
 learned projector) — emergent properties no source states. This is characterization of an open model, not
 an architecture reveal:
 
+![Krea 2 layer-fusion attention, averaged over tokens and heads: layerwise block 0 (left) and block 1 (middle) as 12x12 FROM-layer × TO-layer heatmaps, plus the learned Linear(12→1) projector weights (right). Block 1 shows a bright vertical band at the L20 key column — every layer attends to L20 — while the projector bars are positive on the mid layers (peak L14) and strongly negative on the deep layers (L23/29/32).](figures/attention_maps.png)
+
+*The two layerwise attention blocks (avg over tokens + heads) and the learned projector. The bright L20 column
+in block 1 is the hub; the projector is "mid minus deep" (positive L8–L20, negative L23/29/32).*
+
 1. **L20 is a universal attention hub.** In layerwise block 1, nearly every selected layer attends to L20;
    column-strength L20 = **0.24 / 0.27 / 0.25** across portrait / anime / illustration (~2x the next, L23),
    with a near-identical ranking. Cross-style consistent → **High confidence**, a prompt-independent
@@ -84,15 +101,30 @@ an architecture reveal:
 
 Caveat: the projector's signed weights act on the attention-**mixed** slots (post block 0/1), not raw layers.
 
+![Per-head layerwise block-1 attention for one prompt: 20 small heatmaps, one per attention head. Most heads show the bright L20 key column; a minority specialize on other layers (L14 / L23–29 / L35 / L8).](figures/attention_per_head.png)
+
+*Per-head block-1 attention (20 heads). The hub is **broad** — most heads route to L20 — with a few
+specialists elsewhere, so the concentration is not one rogue head.*
+
+![Layer-fusion attention across three prompts (photo / anime / illustration), block 0 and block 1 each. The L20 key column stays bright in block 1 for all three prompts — the hub is prompt-independent.](figures/attention_cross_prompt.png)
+
+*The same attention, three prompts × {block 0, block 1}. The L20 hub (the bright block-1 column) holds across
+photo / anime / illustration — a prompt-independent property, not a one-prompt artifact.*
+
 **Refiner blocks (mapped) + RAW check (2026-06-26):** the 2 refiner blocks (token attention, post-projector)
 do **local, diagonal-dominant token self-attention** — each token attends mainly to itself + near neighbors
 (~27–31% of attention mass within ±8 of the diagonal) over a low global floor, with only a few **weak** hub
 tokens (a template token ~#7 + a handful of content tokens, ~3–6× uniform; received-entropy 0.94–0.96 → no
 dominant sink). So the refiner does ordinary local token refinement — structurally unlike the layerwise
-**L20 layer-hub**. Map: `docs/figures/refiner_maps.png`. And the whole `txtfusion` is **checkpoint-agnostic**: RAW vs Turbo
+**L20 layer-hub** (map below). And the whole `txtfusion` is **checkpoint-agnostic**: RAW vs Turbo
 projector weights are identical (cosine 1.0, 12/12 signs) and the L20 hub holds on RAW (92–95% of content
 tokens). So the L20 hub + contrastive projector are "Krea 2" findings, not "Turbo"-specific.
 Data: `data/raw_validation/raw_vs_turbo.json`.
+
+![Refiner-block token-attention maps: each token attends mainly to itself and near neighbors (diagonal-dominant) over a low global floor, with only a few weak hub tokens — ordinary local token refinement, structurally unlike the L20 layer-hub.](figures/refiner_maps.png)
+
+*The 2 refiner blocks (post-projector token attention) are diagonal-dominant local self-attention — each token
+attends mostly to itself + near neighbors, with no dominant sink. Structurally unlike the layerwise L20 hub.*
 
 ## Attributes vs the projector-rebalance lever (2026-06-26)
 
@@ -127,6 +159,8 @@ Caveats: quick proof — tiny dataset, 300 steps, rank 16, one validation seed, 
 not a *style* LoRA (where the semantic-depth layer-mix might matter more), NF4-quantized. Doesn't rule out the
 projector mattering in a longer or style-focused run. Data: `data/projector_ab/`.
 
+<a id="prompt-side-think-steering" name="prompt-side-think-steering"></a>
+
 ## Prompt-side steering: a `<think>` block (or system prompt) as a steering vector (2026-06-27)
 
 Every lever above is a **weight/activation** edit (projector rebalance, single-layer isolation). This one is
@@ -143,6 +177,13 @@ the qwen3vl tokenizer emits verbatim, so no ComfyUI/pipeline edit is needed.
 block restores the flattened expressions **as well as or better than** the deep-band rebalance lever, with
 adherence intact — clean photoreal portraits, correct framing/lighting/background, no artifacts, no text
 flood, no style drift.
+
+![Krea 2 Turbo, same seed, four expressions across three columns — stock prompt, + a `<think>` block, and + the deep-band rebalance lever. The in-distribution `<think>` block restores the distillation-flattened intense expressions (furious, terrified) as well as or better than the weight-space rebalance lever, with prompt adherence intact.](figures/think_steering_grid.png)
+
+*Same seed (#123); only the column lever changes. The `<think>` block (middle) restores Turbo's
+distillation-flattened expression in-distribution, matching or beating the deep-band rebalance lever (right)
+without leaving the data manifold. `joyful` (bottom) is a control — it isn't a flattened expression, so it
+renders in every column.*
 
 **Mechanism** (CPU probe, no generation): the `<think>` span is a strong, consistent conditioning lever —
 ~17–24% shift in the 12 selected hidden states, **0.86 direction consistency** across variants, energy
@@ -195,6 +236,12 @@ Krea 2's Turbo LoRA *is* the distillation delta (`Turbo ≈ RAW + 1.0·delta`), 
 Characterized on one dense prompt (`examples/test_prompts/nightclub.txt`), few seeds, fp8. **Low–medium
 confidence** (visual read, n≈1 prompt). Full write-up + figures: [`turbo_lora_strength.md`](turbo_lora_strength.md).
 
+![Turbo-LoRA strength dial: rows = LoRA strength (RAW frame, with the Turbo frame in parens), cols = seed, at 8 steps / cfg 1. Strength 0.0 = RAW, 1.0 = Turbo; the usable quality band is ~0.8–1.2.](figures/turbo_lora_strength_dial.png)
+
+*The de-distillation dial at Turbo's native config (8 steps, cfg 1). Rows = strength; cols = seed. This is one
+of five probe figures — cfg headroom, negative branch, steps, and scheduler are in
+[`turbo_lora_strength.md`](turbo_lora_strength.md).*
+
 1. **At Turbo's native config (8 steps, cfg 1) the dial is a quality ramp**, and the **usable band is
    ~0.8–1.2** — exactly the community's "nice low values" (Turbo frame −0.2…+0.2). 0.8–0.9 is softer/warmer
    than Turbo; 1.2 is punchier/more saturated; below ~0.8 it goes soft *at cfg 1* (recoverable — see 3).
@@ -231,6 +278,12 @@ handoff; LTX-2 does the LoRA-swap version). For Krea 2: **RAW for the high-noise
 finish**. Builder `scripts/generate.build_split_graph`; full write-up + figures:
 [`two_sampler_split.md`](two_sampler_split.md). **Low–medium confidence** (1–2 prompts, ≤3 seeds, fp8, visual).
 
+![Two-sampler split boundary sweep: rows = handoff step k (k0 = pure Turbo, k8 = pure RAW), cols = seed; the RAW high-noise stage runs at cfg 2.5 then hands off to a Turbo finish at cfg 1, 8 steps total. Letting RAW form the high-noise steps restores the same-seed compositional diversity that pure Turbo collapses.](figures/two_sampler_split_diversity.png)
+
+*Boundary sweep: rows = handoff step `k` (k0 = pure Turbo, k8 = pure RAW), cols = seed. The sweet spot k2–3
+restores diversity at Turbo-sharp quality. Full figure set (cfg headroom, negatives, schedule) in
+[`two_sampler_split.md`](two_sampler_split.md).*
+
 - **It unlocks seed/compositional diversity at near-Turbo quality.** Turbo collapses same-seed compositions;
   letting RAW form the high-noise steps restores variety (clear by boundary k2–3 of 8), and the **Turbo finish
   rescues RAW's low-step under-denoising** (pure RAW at 8 steps is hazy; the split is Turbo-sharp). Sweet spot
@@ -244,3 +297,58 @@ finish**. Builder `scripts/generate.build_split_graph`; full write-up + figures:
   uniform de-distill, **and** the split, and RAW is pre-distill — so the uncond/negative direction is a weak
   semantic lever on this model, not something de-distillation or the split brings back. The split's value is
   **diversity + CFG headroom**, not negatives.
+
+## Labeled-axis steering — what predicts it, and how clean is an axis? (2026-06-29)
+
+Goal: turn "steering works (vaguely)" into "steer a *named* axis on purpose, and predict in advance whether
+it will." Measured a difference-of-means direction for four benign axes (smile / detail / wide_shot /
+warm_light), characterized each through the real `txtfusion` forward, then amplified each on a neutral base
+via the concept-inject node. **Low–medium confidence** (1–2 seeds, visual read). Figures inline below;
+harness/prereg internal.
+
+- **Projector pass-through does NOT predict steerability — it's inverted.** A CPU measurement of how much of
+  each axis survives the fusion (pre→post-fusion d′) ranked warm_light highest (0.96) and smile lowest
+  (0.63); actual amplify-steering strength was the *exact opposite* (smile fires hardest, warm_light barely
+  moves). The fusion-separation metric is a dead end for predicting steering.
+- **Direction *consistency* (the cheap A/B-pair measure) is the better proxy — for the extremes.** The
+  cleanest axis (smile, consistency 0.98) steers hardest and the noisiest (warm_light, 0.52) weakest, but the
+  middle isn't monotonic (wide_shot 0.59 outpunches detail 0.71). **Axis visual-saliency also matters** — a
+  composition/style axis moves more pixels than a subtle lighting axis at equal consistency.
+- **A measured axis drags whatever co-varied in its A/B prompts.** smile → close-up framing, wide_shot →
+  illustration style, detail → crop + plain background. The difference-of-means captures the *whole* contrast,
+  not just the named word.
+- **The coupling is largely prompt-design — but cleaning it costs steering power (a real trade-off).** Re-
+  measuring smile from *framing-free* A/B (no "close-up portrait" words) removes the zoom: on a full-body base
+  the clean axis holds framing where the original zooms to a face. **But** on a portrait base the clean axis
+  steers expression *much* more weakly (barely a smile at scale 6 vs a dramatic one for the original). So the
+  close-up context in the original A/B was **load-bearing for the signal**, not just incidental drag — you
+  can't trivially get a clean *and* strong axis by dropping framing words (higher scale on the clean axis is
+  untested). Tighter matched pairs help; they don't fully decouple.
+- **`amplify` CAN conjure a seemingly-absent axis at usable scale** — correcting the prior claim. Amplifying
+  the smile direction on a *no-face landscape* grows a full laughing face by scale 4. `amplify` is
+  `(1+scale)·(cond·d̂)·d̂`: a real prompt's projection onto `d̂` is never exactly zero, and the direction
+  carries coupled "face presence," so a small residual blows up into the concept. It is **not** a reliable
+  "is the concept present?" test (`concept_directions.md` corrected).
+
+![Grid A — labeled-axis steering strength: rows = four benign axes ordered by direction consistency (smile 0.98 > detail 0.71 > wide_shot 0.59 > warm_light 0.52); projector pass-through is the reverse of the row order (smile 0.63 lowest, warm_light 0.96 highest). Cols = amplify scale on a neutral "person in a room" base, same seed. The top row (smile) steers hardest and the bottom (warm_light) barely moves — opposite to what pass-through would predict.](figures/labeled_axis_strength.png)
+
+*Grid A: rows = axis ordered by **direction consistency** (high→low); projector pass-through runs the reverse
+of the row order. Cols = amplify scale on a neutral base. smile (top) steers hardest, warm_light (bottom)
+barely moves — so pass-through does **not** predict steerability, and consistency is the better (if imperfect —
+wide_shot outpunches detail) proxy.*
+
+![amplify-conjures control (two rows): row 1 amplifies the "smile" direction on a no-face mountain-landscape base; row 2 on a portrait base (positive control). Cols = amplify scale. On the landscape a full laughing face grows out of the empty mountains by scale ~4; the portrait smiles as expected — so amplify is a magnitude lever that can conjure an apparently-absent axis, not a presence gate.](figures/labeled_axis_amplify_conjures.png)
+
+*Rows = base (row 1 = no-face landscape, row 2 = has-face portrait positive control); cols = amplify scale. By
+scale ~4 a face appears from the empty landscape — refuting "amplify can't conjure an absent axis." `amplify`
+scales the (never-exactly-zero) present component, so a small residual blows up into the concept.*
+
+![clean-vs-coupled smile axis: the original close-up-A/B smile direction vs a framing-free A/B smile direction, swept by amplify scale on a portrait base. The original drags a close-up zoom; the framing-free axis holds framing but steers expression much more weakly — a clean-vs-strong trade-off.](figures/labeled_axis_clean_vs_coupled.png)
+
+*Original (close-up A/B) smile axis vs a framing-free smile axis. Cleaning the co-varied zoom costs steering
+strength — the close-up context was load-bearing, so a clean **and** strong axis isn't free.*
+
+**Takeaway.** "Steer a named axis on purpose" is achievable but bounded: consistency (cheap) beats the
+fusion-pass-through metric for predicting *which* axes steer; every axis drags its A/B co-variation; cleaning
+that drag with tighter pairs trades against signal strength; and `amplify` is a magnitude lever that conjures
+at high scale, not a presence gate.
