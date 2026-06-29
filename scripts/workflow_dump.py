@@ -42,10 +42,17 @@ def dump_workflow(graph, *, harness, arm="run", seed=0, out_dir=WORKFLOWS,
     Per-run name: ``<harness>_<arm>_s<seed>_<UTC>.json`` (sortable). ``stable_name`` -> a fixed name for a
     reference/canonical workflow. ``prompt`` (optional) is stored in the sidecar for quick eyeballing.
     """
+    if not isinstance(graph, dict) or not graph:
+        raise ValueError("dump_workflow: graph must be a non-empty ComfyUI API dict (node_id -> node); "
+                         f"got {type(graph).__name__}")
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     name = stable_name or f"{harness}_{arm}_s{seed}_{ts}"
+    if stable_name is None:  # per-run names: don't collide+overwrite within the same UTC second (stable names
+        base, n = name, 2    # are canonical and DO overwrite on purpose)
+        while (out / f"{name}.json").exists():
+            name, n = f"{base}_{n}", n + 1
     jpath = out / f"{name}.json"
     jpath.write_text(json.dumps(graph, indent=2))
     meta = {"ts_utc": ts, "harness": harness, "arm": arm, "seed": seed, "git_sha": _git_sha()}

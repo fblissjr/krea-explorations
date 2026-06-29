@@ -164,7 +164,11 @@ def run(graph, out_path, server="http://127.0.0.1:8188", timeout=600,
     if harness is not None:
         from workflow_dump import dump_workflow
         kw = {"out_dir": dump_dir} if dump_dir is not None else {}
-        dump_workflow(graph, harness=harness, arm=arm, seed=seed, prompt=prompt, **kw)
+        try:
+            dump_workflow(graph, harness=harness, arm=arm, seed=seed, prompt=prompt, **kw)
+        except OSError as e:  # best-effort: a disk/permission write failure must not abort a valid render
+            print(f"[generate.run] workflow dump skipped ({e})", flush=True)
+        # NB: ValueError (a bad/empty graph) is NOT caught -> fail fast on a programmer error.
     req = urllib.request.Request(server + "/prompt",
                                  data=json.dumps({"prompt": graph}).encode(),
                                  headers={"Content-Type": "application/json"})

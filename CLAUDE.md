@@ -62,10 +62,16 @@ ComfyUI graphs here are built in code (`internal/scripts/*.py` harnesses) and PO
 harness is the source of truth, but a graph that's only ever POSTed leaves no reproducible artifact. Convention
 so every run is recoverable and loadable:
 
-- **Every render dumps its API-format graph** to gitignored `internal/workflows/` (graphs can embed sensitive
-  prompts, so never to a tracked dir). Don't hand-roll the dump — use the shared helper
-  `from workflow_dump import dump_workflow` (`scripts/workflow_dump.py`), which writes the graph JSON + a
-  `.meta.json` sidecar. `internal/scripts/export_workflows.py` batch-exports the reference set.
+There is ONE serializer (`scripts/workflow_dump.py` → `dump_workflow`) and TWO ways to feed it — use the right
+one, don't mix:
+- **Run-instance dumps: pass `harness=/arm=/seed=/prompt=` to `generate.run()`** — it auto-dumps the graph
+  *before* the POST (so even a failed render leaves an artifact). This is the single chokepoint; do NOT also
+  call `dump_workflow` yourself in the harness (that's the redundant path — one or the other, not both).
+- **Reference/canonical workflows: each harness owns them** via a `reference_workflows() -> {stable_name: graph}`
+  function; `internal/scripts/export_workflows.py` is a thin discovery loop that calls it on each harness and
+  dumps with `stable_name=` (no datetime). Do NOT hardcode a central per-experiment list in `export_workflows`
+  reaching into each harness's internals — that's a monolith that breaks on any `graph()` signature change.
+- Dumps land in gitignored `internal/workflows/` (graphs can embed sensitive prompts — never a tracked dir).
 - **Per-run dumps carry a sortable UTC datetime** in the name:
   `<harness>_<arm>_s<seed>_<YYYYMMDDTHHMMSSZ>.json`. **Do NOT rely on mtime** — it resets on copy/git/rsync,
   exactly when you need provenance. Provenance (`ts_utc, harness, arm, seed, git_sha, prompt`) goes in the

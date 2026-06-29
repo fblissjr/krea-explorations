@@ -19,7 +19,7 @@ def test_dump_writes_json_and_meta_sidecar(tmp_path):
     p = dump_workflow(g, harness="h", arm="a", seed=3, prompt="hello", out_dir=tmp_path)
     assert p.suffix == ".json" and p.name.startswith("h_a_s3_")
     assert json.loads(p.read_text()) == g                       # graph JSON is the bare API dict (loadable)
-    meta = json.loads((p.with_suffix("")).with_suffix(".meta.json").read_text())
+    meta = json.loads(p.with_name(p.stem + ".meta.json").read_text())  # match dump_workflow's "{name}.meta.json"
     assert meta["harness"] == "h" and meta["arm"] == "a" and meta["seed"] == 3 and meta["prompt"] == "hello"
     assert "ts_utc" in meta and "git_sha" in meta               # provenance lives in the sidecar, not the graph
 
@@ -53,3 +53,27 @@ def test_run_without_harness_dumps_nothing(tmp_path, monkeypatch):
     with pytest.raises(ConnectionError):
         generate.run({"save": {}}, str(tmp_path / "o.png"), dump_dir=tmp_path)
     assert not list(tmp_path.glob("*.json"))                    # opt-in: no harness -> no dump
+
+
+def test_sidecar_name_survives_dots_in_stable_name(tmp_path):
+    # a dotted stable_name (e.g. a turbo-lora strength) must NOT get mangled: sidecar is "<name>.meta.json",
+    # not a .with_suffix replacement that would eat the trailing ".4". Guards a future dump_workflow refactor.
+    p = dump_workflow({"x": {"class_type": "Y", "inputs": {}}}, harness="h",
+                      stable_name="61_turbo0.4", out_dir=tmp_path)
+    assert p.name == "61_turbo0.4.json"
+    assert (tmp_path / "61_turbo0.4.meta.json").exists()        # un-mangled sidecar alongside the .json
+
+
+def test_rejects_non_dict_or_empty_graph(tmp_path):
+    for bad in (None, [], {}, "x"):                             # silently writing null/[]/"" is not "loadable"
+        with pytest.raises(ValueError):
+            dump_workflow(bad, harness="h", out_dir=tmp_path)
+
+
+def test_per_run_names_dont_collide_but_stable_names_overwrite(tmp_path):
+    a = dump_workflow({"x": {"class_type": "A", "inputs": {}}}, harness="h", arm="a", seed=1, out_dir=tmp_path)
+    b = dump_workflow({"x": {"class_type": "B", "inputs": {}}}, harness="h", arm="a", seed=1, out_dir=tmp_path)
+    assert a != b and a.exists() and b.exists()                # same harness/arm/seed/second -> distinct files
+    c = dump_workflow({"x": {"inputs": {}}}, harness="h", stable_name="10_ref", out_dir=tmp_path)
+    d = dump_workflow({"y": {"inputs": {}}}, harness="h", stable_name="10_ref", out_dir=tmp_path)
+    assert c == d                                              # stable name is canonical -> overwrite, not bump
