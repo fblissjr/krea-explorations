@@ -44,10 +44,21 @@ PRESETS = {
 }
 
 
+def model_node(class_type, **inputs):
+    """A ``model_patches`` entry: insert ``class_type`` on the model edge, wiring the current model ref into
+    its ``model`` input, and return the new ref. The single seam that levers (a LoRA, an attention bias, a
+    residual steer) compose onto, so the graph skeleton lives here instead of being re-inlined per harness."""
+    def patch(g, model_ref):
+        nid = f"patch_{sum(1 for k in g if k.startswith('patch_'))}"
+        g[nid] = {"class_type": class_type, "inputs": {"model": model_ref, **inputs}}
+        return [nid, 0]
+    return patch
+
+
 def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=42,
                 width=1024, height=1024, sampler="euler", scheduler="simple",
                 loras=None, lora=None, lora_strength=1.0,
-                sage=None, filename_prefix="krea2_gen"):
+                sage=None, model_patches=None, filename_prefix="krea2_gen"):
     """Build a ComfyUI API graph for a single Krea 2 txt2img.
 
     Pass ``loras=[(name, strength), ...]`` to chain several LoRAs on the model edge (e.g. bypass + a
@@ -57,6 +68,9 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
     Pass ``sage=<mode>`` (e.g. "auto") to insert the ``Krea2SageAttention`` node (our own
     optimized_attention_override, no KJNodes) on the model edge before the sampler — the Phase-0
     sage-vs-SDPA A/B. Same seed both arms; diff the outputs and compare wall-clock.
+
+    Pass ``model_patches=[model_node(...), ...]`` to hang extra levers on the model edge, in order, after
+    the LoRA and sage — a harness composes its interpretability nodes here instead of re-inlining the skeleton.
     """
     g = {"ckpt": {"class_type": "UNETLoader",
                   "inputs": {"unet_name": unet, "weight_dtype": "default"}}}
@@ -72,6 +86,9 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
         g["sage"] = {"class_type": "Krea2SageAttention",
                      "inputs": {"model": sampler_model, "sage_mode": sage}}
         sampler_model = ["sage", 0]
+    # composable levers on the model edge (attention bias, residual steer, ...); each is a model_node(...)
+    for patch in model_patches or []:
+        sampler_model = patch(g, sampler_model)
     g["clip"] = {"class_type": "CLIPLoader",
                  "inputs": {"clip_name": clip, "type": "krea2", "device": "default"}}
     g["vae"] = {"class_type": "VAELoader", "inputs": {"vae_name": vae}}
@@ -99,6 +116,7 @@ def build_split_graph(prompt, *, unet_high, unet_low, clip, vae, boundary,
                       width=1024, height=1024, sampler="euler", scheduler="simple",
                       lora_high=None, lora_high_strength=1.0,
                       lora_low=None, lora_low_strength=1.0,
+                      model_patches_high=None, model_patches_low=None,
                       filename_prefix="krea2_split"):
     """Two-sampler split: a high-noise model denoises steps ``[0, boundary)``, a low-noise model finishes
     ``[boundary, steps)``, on one shared flow-shifted schedule (Wan-2.2-style leftover-noise handoff).
@@ -116,7 +134,7 @@ def build_split_graph(prompt, *, unet_high, unet_low, clip, vae, boundary,
 
     g = {}
 
-    def model_branch(tag, unet, lora, lora_strength):
+    def model_branch(tag, unet, lora, lora_strength, patches):
         g[f"{tag}_unet"] = {"class_type": "UNETLoader",
                             "inputs": {"unet_name": unet, "weight_dtype": "default"}}
         src = [f"{tag}_unet", 0]
@@ -124,10 +142,12 @@ def build_split_graph(prompt, *, unet_high, unet_low, clip, vae, boundary,
             g[f"{tag}_lora"] = {"class_type": "LoraLoaderModelOnly",
                                 "inputs": {"model": src, "lora_name": lora, "strength_model": lora_strength}}
             src = [f"{tag}_lora", 0]
+        for patch in patches or []:
+            src = patch(g, src)
         return src
 
-    high_model = model_branch("high", unet_high, lora_high, lora_high_strength)
-    low_model = model_branch("low", unet_low, lora_low, lora_low_strength)
+    high_model = model_branch("high", unet_high, lora_high, lora_high_strength, model_patches_high)
+    low_model = model_branch("low", unet_low, lora_low, lora_low_strength, model_patches_low)
 
     g["clip"] = {"class_type": "CLIPLoader",
                  "inputs": {"clip_name": clip, "type": "krea2", "device": "default"}}
