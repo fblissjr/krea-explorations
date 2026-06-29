@@ -239,78 +239,95 @@ verified). Untested twin: does a system-turn prompt steer *at all* through the i
 follow-up this pointed to is **now done** — see **Labeled-axis steering** below: it turns "steering works"
 into "steer a *named* axis on purpose, and predict in advance whether it will".
 
-### The Turbo-LoRA strength dial — a de-distillation lever (2026-06-28)
+### The Turbo-LoRA strength dial — a de-distillation lever (2026-06-28, re-run on an open scene 2026-06-29)
 
-All the levers above edit conditioning. This one edits the **DiT** path, and it's a clean continuous dial.
-Krea 2's Turbo LoRA *is* the distillation delta (`Turbo ≈ RAW + 1.0·delta`), so its strength is a
-**de-distillation knob** and the two checkpoints are the same model at two points on it:
+This lever edits the **DiT** path, not the conditioning, and it's a clean continuous dial. Krea 2's Turbo LoRA
+*is* the distillation delta (`Turbo ≈ RAW + 1.0·delta`), so its strength is a **de-distillation knob** — RAW
+and Turbo are the same model at two points on it:
 
 > **`RAW + s·LoRA ≡ Turbo + (s−1)·LoRA`** — `s`=1.0 is Turbo, `s`=0.0 is RAW.
 
-Characterized on one dense prompt (`examples/test_prompts/nightclub.txt`), few seeds, fp8. **Low–medium
-confidence** (visual read, n≈1 prompt). Full write-up + figures: [`turbo_lora_strength.md`](turbo_lora_strength.md).
+Re-characterized on an **open scene with a subject** (replacing the earlier dense-prompt, n≈1 read). **Low–
+medium confidence** (visual, few seeds). Full write-up + figures: [`turbo_lora_strength.md`](turbo_lora_strength.md).
 
-![Turbo-LoRA strength dial: rows = LoRA strength (RAW frame, with the Turbo frame in parens), cols = seed, at 8 steps / cfg 1. Strength 0.0 = RAW, 1.0 = Turbo; the usable quality band is ~0.8–1.2.](figures/turbo_lora_strength_dial.png)
+![Quality-vs-compute sweet spot: one subject, five configs left→right — Turbo (s1.0, 8 steps, cfg1, 8 evals), A (s0.8, 8/cfg1, 8ev), B (s0.6, 12/cfg1, 12ev), C (s0.5, 12/cfg2.5, 24ev), RAW (s0, 28/cfg5.5, 56ev). Quality plateaus fast: Turbo and A are near-identical; B adds a little detail at cfg1; C is punchier/warmer at 3× compute; RAW is warmest at 7×.](figures/turbo_lora_sweet_spot.png)
 
-*The de-distillation dial at Turbo's native config (8 steps, cfg 1). Rows = strength; cols = seed. This is one
-of five probe figures — cfg headroom, negative branch, steps, and scheduler are in
-[`turbo_lora_strength.md`](turbo_lora_strength.md).*
+*Quality vs compute, five configs at increasing eval cost. Quality plateaus early, and the whole useful range
+stays at **cfg = 1** — where ComfyUI skips the uncond pass, so compute is halved. cfg > 1 (C / RAW) only earns
+its 2–7× when you actually need CFG/negative steering, not for "more quality."*
 
-1. **At Turbo's native config (8 steps, cfg 1) the dial is a quality ramp**, and the **usable band is
-   ~0.8–1.2** — exactly the community's "nice low values" (Turbo frame −0.2…+0.2). 0.8–0.9 is softer/warmer
-   than Turbo; 1.2 is punchier/more saturated; below ~0.8 it goes soft *at cfg 1* (recoverable — see 3).
-2. **Lower strength restores cfg>1 / negative-prompt headroom.** Turbo (1.0) burns out above cfg ~2.5
-   (blown highlights); 0.5–0.7 and RAW tolerate cfg 4. RAW (0.0) actually *requires* cfg>1. So **CFG
-   headroom grows as strength drops** — a de-distilled run wants `strength ~0.5, cfg ~2.5–4`.
-3. **The recovery lever for low-strength softness is cfg, not steps.** I expected de-distilled strengths to
-   need more steps; they don't — at cfg 2.5, strength 0.5/0.7 are already sharp at **8 steps**, and 12→28
-   steps add only marginal refinement. The §1 softness was a cfg-1 artifact. So `strength 0.5–0.7, cfg 2.5,
-   8 steps` buys cfg/negative flexibility at near-Turbo speed.
-4. **The negative branch is active but weak.** At cfg>1 the uncond path is live and perturbs the image, but
-   targeted suppression failed (an anti-lamp negative never removed the lamp) — confounded by a target that
-   was over-described in the positive. (Now **bounded** by the two-sampler work below: even un-confounded and
-   at high cfg, negatives don't steer on Krea 2 regardless of route.)
-5. **The sigma schedule is a weak lever here.** At strength 0.5 / cfg 2.5 / 8 steps, scheduler family barely
-   matters (`simple`/`normal`/`sgm_uniform` near-identical); only **`beta`** reframes (composition reroll)
-   and only **`mu3.0`** brightens/blooms. The strength and cfg dials dominate the schedule shape.
+**Which config.** **`s0.8 / 8 steps / cfg 1` is the efficiency pick** (matches Turbo at 8 evals);
+**`s0.6 / 12 steps / cfg 1` is the best all-rounder** (a touch more detail and seed-diversity headroom for
+1.5× compute, still at cfg 1). Single-pass Turbo (`s1.0`) is the simplest fallback.
 
-**Reframe.** "RAW vs Turbo" is a false binary — they're endpoints of one dial, and the interesting regime is
-*between* them: a partial de-distill (strength ~0.5–0.7) that keeps near-Turbo speed (8 steps) while
-recovering the CFG/negative-prompt guidance that distillation removed. The cost is one extra knob (cfg ~2.5).
+- **CFG headroom grows as strength drops.** Turbo (s1.0) burns out above cfg ~2.5 — at cfg 4 the face goes
+  blown-white; s0.5 and RAW tolerate cfg 4 cleanly. So **cfg > 1 is only usable once Turbo-LoRA strength drops
+  below ~0.8** (strength × cfg burn grid in [`turbo_lora_strength.md`](turbo_lora_strength.md)).
+- **The recovery lever for low-strength softness is cfg, not steps** — at cfg 2.5, `s0.5/0.7` are already sharp
+  at 8 steps; 12→28 steps add only marginal refinement.
+- **The negative is inert at cfg = 1 — and you must use a real (empty) negative, never `ConditioningZeroOut`.**
+  At cfg 1 ComfyUI skips the uncond pass, so a real negative and `ConditioningZeroOut` are byte-identical
+  there; the negative only acts at cfg > 1, and even there it's a weak semantic lever (targeted suppression
+  fails). The catch: **`_cfg_pp` samplers use the uncond even at cfg 1**, and `ConditioningZeroOut` feeds them
+  a degenerate uncond → grain. So pair any de-distilled run with a real empty negative.
+
+![Negative-branch mechanism: one subject, four arms at cfg 1 — euler + ZeroOut, euler + real-empty-negative, euler_cfg_pp + ZeroOut, euler_cfg_pp + real-empty-negative. The three clean arms are identical; only euler_cfg_pp + ConditioningZeroOut is grainy.](figures/turbo_lora_negative_cfgpp.png)
+
+*At cfg 1 the uncond is skipped for plain euler (cols 1–2 identical), but `_cfg_pp` samplers still use it — and
+`ConditioningZeroOut` hands them a degenerate uncond, the only grainy cell (col 3). Use a real empty negative.*
+
+**Reframe.** "RAW vs Turbo" is a false binary — they are endpoints of one dial, and the practical default
+lives near the Turbo end at cfg 1 (`s0.6–0.8`, 8–12 steps); reach for cfg > 1 (and a lower strength to afford
+it) only when you need guidance / negative steering.
 
 ---
 
-**See also:** [`turbo_lora_strength.md`](turbo_lora_strength.md) — the full dial characterization with dial
-table, practical recipe, and the five probe figures (strength · cfg headroom · negative branch · steps ·
-scheduler).
+**See also:** [`turbo_lora_strength.md`](turbo_lora_strength.md) — the full dial characterization (the
+strength × cfg burn grid, the scheduler sweep, and the practical recipe).
 
-### Two-sampler split: RAW high-noise → Turbo low-noise (2026-06-28)
+### Two-sampler split: low-strength high-noise → Turbo finish (2026-06-28, re-run on an open scene 2026-06-29)
 
-The strength dial above moves one model uniformly; this moves *per step* — a high-noise model for the first
-`boundary` steps, a low-noise model for the rest, on one shared schedule (Wan-2.2-style leftover-noise
-handoff; LTX-2 does the LoRA-swap version). For Krea 2: **RAW for the high-noise steps → Turbo for the
-finish**. Builder `scripts/generate.build_split_graph`; full write-up + figures:
-[`two_sampler_split.md`](two_sampler_split.md). **Low–medium confidence** (1–2 prompts, ≤3 seeds, fp8, visual).
+The dial moves one model uniformly; this moves *per step* — a high-noise model for the first `boundary` steps,
+a low-noise model for the rest, on one shared schedule (Wan-2.2-style leftover-noise handoff; LTX-2 does the
+LoRA-swap version). Builder `scripts/generate.build_split_graph`; full write-up + figures:
+[`two_sampler_split.md`](two_sampler_split.md). **Medium confidence** on the diversity result (visual, n=2 open
+scenes); low–medium elsewhere.
 
-![Two-sampler split boundary sweep: rows = handoff step k (k0 = pure Turbo, k8 = pure RAW), cols = seed; the RAW high-noise stage runs at cfg 2.5 then hands off to a Turbo finish at cfg 1, 8 steps total. Letting RAW form the high-noise steps restores the same-seed compositional diversity that pure Turbo collapses.](figures/two_sampler_split_diversity.png)
+The diversity story is **two mechanisms** — and the first corrects an earlier overclaim:
 
-*Boundary sweep: rows = handoff step `k` (k0 = pure Turbo, k8 = pure RAW), cols = seed. The sweet spot k2–3
-restores diversity at Turbo-sharp quality. Full figure set (cfg headroom, negatives, schedule) in
-[`two_sampler_split.md`](two_sampler_split.md).*
+- **Uniform de-distillation strength is NOT a universal diversity lever.** Only *constrained/dense* prompts
+  collapse under Turbo; on an **open scene Turbo already varies across seeds** (cross-seed diff flat ~45–48 as
+  strength drops 1.0→0.6; the 0.4 uptick is undercook/softness, not new composition). So lowering strength
+  trades CFG headroom and detail, not variety. We do **not** claim "Turbo collapses seeds" in general.
 
-- **It unlocks seed/compositional diversity at near-Turbo quality.** Turbo collapses same-seed compositions;
-  letting RAW form the high-noise steps restores variety (clear by boundary k2–3 of 8), and the **Turbo finish
-  rescues RAW's low-step under-denoising** (pure RAW at 8 steps is hazy; the split is Turbo-sharp). Sweet spot
-  ≈ k2–3 of 8. This is the *working* version of "unlock low-step diversity" — letting RAW form the composition
-  over several high-noise steps, not the single-step sigma-rescale that nulled earlier.
-- **It gives clean CFG headroom.** The high cfg runs only on the RAW high-noise steps (Turbo finishes at cfg
-  1), so **cfg up to ~5 on the RAW stage stays clean** — prompt-adherence headroom neither pure Turbo (burns
-  >2.5) nor a uniform low-strength de-distill offers. cfg ~8 is past the clean ceiling (artifacts).
-- **It does *not* restore negative-prompt control.** A negative can't override an explicit positive mention,
-  and a strong global *style* negative never flips style — at high cfg it only adds artifacts. True for Turbo,
-  uniform de-distill, **and** the split, and RAW is pre-distill — so the uncond/negative direction is a weak
-  semantic lever on this model, not something de-distillation or the split brings back. The split's value is
-  **diversity + CFG headroom**, not negatives.
+![Seed diversity vs Turbo-LoRA strength on an open scene (a figure in a misty mountain valley): rows = strength 1.0 / 0.8 / 0.6 / 0.4 with the cross-seed diversity metric, cols = seed 42 / 123 / 314, cfg 1. The metric is flat ~45–48 from strength 1.0 to 0.6 — uniform de-distillation adds no cross-seed variety here; the 0.4 uptick is softness, not new composition.](figures/two_sampler_uniform_diversity.png)
+
+*Uniform strength on an open scene: cross-seed diversity is flat (~45–48) from 1.0→0.6, so de-distillation
+strength alone is not a diversity lever here. (Pixel-diff metric; it saturates on busy scenes — a
+composition-aware metric is the deferred follow-up.)*
+
+- **The per-stage split IS a diversity lever, even on open scenes — for free.** Running the high-noise steps at
+  *low* strength (or RAW) and finishing at full Turbo re-rolls composition across seeds at **cfg 1 and the same
+  8-eval cost** as single-pass, quality held — the variety comes from the split's high-noise *composition*
+  phase, not from uniform de-distillation. Visually consistent on 2 scene types (landscape + street). **A
+  strong candidate for the recommended default when you want seed variety**; single-pass Turbo is the simpler
+  fallback.
+
+![Single-pass vs per-stage split on an open scene: rows = single-pass A (s0.8), split T0.4→T1.0 (cfg 1, 8 evals), split RAW→T1.0 (cfg 2.5); cols = seed 42 / 123 / 314. The two split rows re-roll composition across seeds (pose, framing, layout) more than single-pass A, which holds the same figure-in-valley template.](figures/two_sampler_split_openscene.png)
+
+*Rows = single-pass A vs two splits; cols = seed. The cfg-1 `T0.4→T1.0` split (middle) adds cross-seed
+composition variety at single-pass cost — the free-diversity pick. (RAW→T1.0 at cfg 2.5 varies too but costs
+more and can letterbox, e.g. seed 314.)*
+
+- **Clean CFG headroom** (when the high stage runs cfg > 1): high cfg on the high-noise steps only, Turbo
+  finish at cfg 1, stays clean to ~cfg 5 — headroom neither pure Turbo (burns >2.5) nor a uniform de-distill
+  offers.
+- **It does *not* restore negative control** — the negative is a weak semantic lever on Krea 2 regardless of
+  route, and inert at cfg 1 (see the dial's negative-mechanism note above).
+
+Open follow-up: a **composition-aware diversity metric**. Pixel-diff saturates on busy scenes (the single-pass
+and split market-street rows both scored ~63 despite the split being visibly more varied), so it
+under-measures diversity exactly where it matters.
 
 <a id="labeled-axis" name="labeled-axis"></a>
 
