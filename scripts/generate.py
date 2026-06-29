@@ -152,8 +152,19 @@ def build_split_graph(prompt, *, unet_high, unet_low, clip, vae, boundary,
     return g
 
 
-def run(graph, out_path, server="http://127.0.0.1:8188", timeout=600):
-    """Submit a graph and save the first SaveImage output to out_path. Returns True on success."""
+def run(graph, out_path, server="http://127.0.0.1:8188", timeout=600,
+        harness=None, arm="run", seed=0, prompt=None, dump_dir=None):
+    """Submit a graph and save the first SaveImage output to out_path. Returns True on success.
+
+    Pass ``harness=...`` to auto-dump the API graph + provenance sidecar (the workflow convention, see
+    CLAUDE.md "Workflows") *before* the POST, so every render leaves a loadable artifact even if it fails.
+    Opt-in: with no ``harness`` nothing is dumped (harnesses that call ``dump_workflow`` themselves are
+    unaffected and won't double-dump). ``dump_dir`` overrides the default ``internal/workflows/``.
+    """
+    if harness is not None:
+        from workflow_dump import dump_workflow
+        kw = {"out_dir": dump_dir} if dump_dir is not None else {}
+        dump_workflow(graph, harness=harness, arm=arm, seed=seed, prompt=prompt, **kw)
     req = urllib.request.Request(server + "/prompt",
                                  data=json.dumps({"prompt": graph}).encode(),
                                  headers={"Content-Type": "application/json"})
