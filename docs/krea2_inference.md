@@ -69,6 +69,20 @@ Four reference recipes, named A to D, cover the common cases. All use the modula
 
 Turbo is RAW plus the Turbo LoRA at strength 1.0. So the LoRA strength is a continuous dial from RAW behaviour up to full Turbo distillation.
 
+### Which workflow for which job
+
+Pick by what the generation needs, then read the recipe row below for the wiring.
+
+| If you need | Use | What it costs |
+| --- | --- | --- |
+| The everyday default: sharp, repeatable, cheapest. Best for A/B tests, where you change one thing and hold the rest fixed | A | 8 evals, deterministic |
+| The same look but with texture and fine detail held at 8 steps | D | 8 evals, stochastic SDE finish |
+| Seed and compositional variety, with a negative prompt that bites | B | about 2x A, because CFG runs the uncond pass too |
+| The most seed diversity at near-Turbo speed, with CFG headroom to set composition | C, the split | a little above A, CFG runs only on the high-noise steps |
+| Full RAW fidelity, no distillation | raw preset | 56 evals, the slowest |
+
+Within any of these the Turbo-LoRA strength is a continuous RAW-to-Turbo dial: lower strength buys CFG headroom and seed variety but needs more steps. The quality-for-compute sweet spot stays at cfg 1, strength 0.6 to 0.8. See [turbo_lora_strength.md](turbo_lora_strength.md) for the dial and [two_sampler_split.md](two_sampler_split.md) for when the split earns its second pass.
+
 | Workflow | Model | Guider | Sampler | Notes |
 | --- | --- | --- | --- | --- |
 | A drop-in | RAW plus Turbo LoRA 0.8 | BasicGuider, CFG off | euler | sharp, deterministic, 8 steps |
