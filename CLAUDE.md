@@ -1,6 +1,6 @@
 # CLAUDE.md — krea2-explorations
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 Project memory for this repo. Global conventions (uv, TDD, path-privacy, docs, no emojis) are in the
 user-level CLAUDE.md and still apply; this file holds only what's specific to this repo.
@@ -55,6 +55,29 @@ build_contact_sheet(grid_rows, out_path, col_labels=[...], row_labels=[...])
 
 `grid_rows` is a 2D list (rows x cols) of image path / `PIL.Image` / `None`; missing cells render as a
 placeholder instead of crashing. It depends only on Pillow + stdlib. Tests: `tests/test_image_grid.py`.
+
+## Workflows — every run saves its graph; promote to public deliberately
+
+ComfyUI graphs here are built in code (`internal/scripts/*.py` harnesses) and POSTed to the server — the
+harness is the source of truth, but a graph that's only ever POSTed leaves no reproducible artifact. Convention
+so every run is recoverable and loadable:
+
+- **Every render dumps its API-format graph** to gitignored `internal/workflows/` (graphs can embed sensitive
+  prompts, so never to a tracked dir). Don't hand-roll the dump — use the shared helper
+  `from workflow_dump import dump_workflow` (`scripts/workflow_dump.py`), which writes the graph JSON + a
+  `.meta.json` sidecar. `internal/scripts/export_workflows.py` batch-exports the reference set.
+- **Per-run dumps carry a sortable UTC datetime** in the name:
+  `<harness>_<arm>_s<seed>_<YYYYMMDDTHHMMSSZ>.json`. **Do NOT rely on mtime** — it resets on copy/git/rsync,
+  exactly when you need provenance. Provenance (`ts_utc, harness, arm, seed, git_sha, prompt`) goes in the
+  `.meta.json` sidecar, **not** a top-level key inside the API JSON (ComfyUI treats an extra top-level key as a
+  malformed node and fails to load it).
+- **Reference/canonical workflows** (one definitive graph per experiment type) keep STABLE names, no datetime
+  (e.g. `10_dit_capture_stock.json`) — overwrite on harness change; git is the version history.
+- **Promotion path:** `internal/workflows/` (raw, may be sensitive) → validate + make benign (generic
+  prompts/axes) → `example_workflows/` (public, UI-native — the front door). ONLY benign, validated workflows
+  graduate to `example_workflows/`.
+- Loadable via ComfyUI **"Load (API format)"** or re-POST as `{"prompt": <json>}`. A dumped JSON is a single
+  arm; re-running the harness reproduces the full multi-arm grid.
 
 ## Two virtualenvs (this bites)
 
