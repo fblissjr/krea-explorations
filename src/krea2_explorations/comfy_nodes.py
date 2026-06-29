@@ -116,16 +116,20 @@ from .krea2_dit_residual_steer_node import (
     NODE_CLASS_MAPPINGS as _RESID_NODES,
     NODE_DISPLAY_NAME_MAPPINGS as _RESID_NAMES,
 )
+from .krea2_resolution_node import (
+    NODE_CLASS_MAPPINGS as _RES_NODES,
+    NODE_DISPLAY_NAME_MAPPINGS as _RES_NAMES,
+)
 
 NODE_CLASS_MAPPINGS = {
     "Krea2ProjectorRebalance": Krea2ProjectorRebalance,
     **_UNTWIST_NODES, **_KEEPSYS_NODES, **_INJECT_NODES, **_CAPTURE_NODES, **_SAGE_NODES, **_ATTNBIAS_NODES,
-    **_RESID_NODES,
+    **_RESID_NODES, **_RES_NODES,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Krea2ProjectorRebalance": "Krea 2 Projector Rebalance",
     **_UNTWIST_NAMES, **_KEEPSYS_NAMES, **_INJECT_NAMES, **_CAPTURE_NAMES, **_SAGE_NAMES, **_ATTNBIAS_NAMES,
-    **_RESID_NAMES,
+    **_RESID_NAMES, **_RES_NAMES,
 }
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "Krea2ProjectorRebalance", "SELECT_LAYERS"]

@@ -19,7 +19,7 @@ def _by_type(g, ctype):
 
 
 def _trace_unet_name(g, ref):
-    """Follow a model ref back through ModelSamplingFlux / LoraLoaderModelOnly to the UNETLoader name."""
+    """Follow a model ref back through LoraLoaderModelOnly to the UNETLoader name."""
     node = g[ref[0]]
     while node["class_type"] != "UNETLoader":
         node = g[node["inputs"]["model"][0]]
@@ -76,9 +76,8 @@ def test_models_routed_high_to_low():
     high, low = _stages(g)
     assert _trace_unet_name(g, g[high]["inputs"]["model"]) == "raw.safetensors"
     assert _trace_unet_name(g, g[low]["inputs"]["model"]) == "turbo.safetensors"
-    # Each stage routes through its own ModelSamplingFlux (the flow shift).
-    assert g[g[high]["inputs"]["model"][0]]["class_type"] == "ModelSamplingFlux"
-    assert g[g[low]["inputs"]["model"][0]]["class_type"] == "ModelSamplingFlux"
+    # No ModelSamplingFlux: the flow shift comes from Krea2's model config (the node is a no-op at ~1MP).
+    assert not _by_type(g, "ModelSamplingFlux")
 
 
 def test_cfg_per_stage():
@@ -102,13 +101,13 @@ def test_low_stage_zeroes_out_negative_when_cfg_off():
     assert g[g[low]["inputs"]["negative"][0]]["class_type"] == "ConditioningZeroOut"
 
 
-def test_per_stage_lora_inserted_before_shift():
+def test_per_stage_lora_inserted_on_its_branch():
     g = _graph(lora_high="projector.safetensors", lora_high_strength=0.5)
     high, _ = _stages(g)
     loras = _by_type(g, "LoraLoaderModelOnly")
     assert any(v["inputs"]["lora_name"] == "projector.safetensors"
                and v["inputs"]["strength_model"] == 0.5 for v in loras.values())
-    # The high model chain still resolves to the high UNET (lora sits between loader and shift).
+    # The high model chain still resolves to the high UNET (lora sits between loader and sampler).
     assert _trace_unet_name(g, g[high]["inputs"]["model"]) == "raw.safetensors"
 
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env python
-"""Generate a Krea 2 image through the ComfyUI API, with the proper flow-match shift.
+"""Generate a Krea 2 image through the ComfyUI API.
 
 Talks to a running ComfyUI server over HTTP, so it needs no ComfyUI path — just the
 model filenames as they appear in your ComfyUI models dirs.
 
 Key points baked in:
-- ModelSamplingFlux (base_shift 0.5, max_shift 1.15) reproduces Krea's resolution-aware `mu`.
+- The flow-match shift (1.15) comes from Krea2's own model config; ModelSamplingFlux was removed because
+  it only re-derives that resolution-aware `mu`, which is a proven pixel-identical no-op at the ~1MP
+  trained area (it only differs far off-1MP, where it's a weak lever anyway).
 - Deterministic euler/simple + fixed seed by default, so A/B comparisons isolate your change.
 - Presets: `turbo` (8 steps, CFG off) and `raw` (28 steps, CFG 4.5). RAW also needs `--unet` set
   to a RAW checkpoint.
@@ -26,10 +28,16 @@ from pathlib import Path
 # Reference inference.py default guidance=4.5 -> ComfyUI cfg=5.5. Turbo runs CFG off (cfg=1.0).
 PRESETS = {"turbo": dict(steps=8, cfg=1.0), "raw": dict(steps=28, cfg=5.5)}
 
+# Default model filenames (as they appear in the ComfyUI models dirs). Single source so harnesses can
+# import these instead of re-hardcoding the strings.
+DEFAULT_UNET = "krea2_turbo_fp8_scaled.safetensors"
+DEFAULT_CLIP = "qwen3vl_4b_fp8_scaled.safetensors"
+DEFAULT_VAE = "qwen_image_vae.safetensors"
+
 
 def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=42,
                 width=1024, height=1024, sampler="euler", scheduler="simple",
-                base_shift=0.5, max_shift=1.15, lora=None, lora_strength=1.0,
+                lora=None, lora_strength=1.0,
                 sage=None, filename_prefix="krea2_gen"):
     """Build a ComfyUI API graph for a single Krea 2 txt2img with the flow shift applied.
 
@@ -42,18 +50,14 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
     """
     g = {"ckpt": {"class_type": "UNETLoader",
                   "inputs": {"unet_name": unet, "weight_dtype": "default"}}}
-    model_src = ["ckpt", 0]
+    sampler_model = ["ckpt", 0]
     if lora:
         g["lora"] = {"class_type": "LoraLoaderModelOnly",
                      "inputs": {"model": ["ckpt", 0], "lora_name": lora, "strength_model": lora_strength}}
-        model_src = ["lora", 0]
-    g["shift"] = {"class_type": "ModelSamplingFlux",
-                  "inputs": {"model": model_src, "max_shift": max_shift,
-                             "base_shift": base_shift, "width": width, "height": height}}
-    sampler_model = ["shift", 0]
+        sampler_model = ["lora", 0]
     if sage and sage != "disabled":
         g["sage"] = {"class_type": "Krea2SageAttention",
-                     "inputs": {"model": ["shift", 0], "sage_mode": sage}}
+                     "inputs": {"model": sampler_model, "sage_mode": sage}}
         sampler_model = ["sage", 0]
     g["clip"] = {"class_type": "CLIPLoader",
                  "inputs": {"clip_name": clip, "type": "krea2", "device": "default"}}
@@ -80,7 +84,6 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
 def build_split_graph(prompt, *, unet_high, unet_low, clip, vae, boundary,
                       negative="", steps=8, cfg_high=2.5, cfg_low=1.0, seed=42,
                       width=1024, height=1024, sampler="euler", scheduler="simple",
-                      base_shift=0.5, max_shift=1.15,
                       lora_high=None, lora_high_strength=1.0,
                       lora_low=None, lora_low_strength=1.0,
                       filename_prefix="krea2_split"):
@@ -108,10 +111,7 @@ def build_split_graph(prompt, *, unet_high, unet_low, clip, vae, boundary,
             g[f"{tag}_lora"] = {"class_type": "LoraLoaderModelOnly",
                                 "inputs": {"model": src, "lora_name": lora, "strength_model": lora_strength}}
             src = [f"{tag}_lora", 0]
-        g[f"{tag}_shift"] = {"class_type": "ModelSamplingFlux",
-                             "inputs": {"model": src, "max_shift": max_shift, "base_shift": base_shift,
-                                        "width": width, "height": height}}
-        return [f"{tag}_shift", 0]
+        return src
 
     high_model = model_branch("high", unet_high, lora_high, lora_high_strength)
     low_model = model_branch("low", unet_low, lora_low, lora_low_strength)
@@ -181,9 +181,11 @@ def run(graph, out_path, server="http://127.0.0.1:8188", timeout=600,
         # (esp. during the first-render model load), so reading outputs on mere presence returns empty -> a
         # spurious False. This was the real cause of the "first render after a restart fails" flakiness.
         if pid in h and h[pid].get("status", {}).get("completed"):
-            imgs = h[pid].get("outputs", {}).get("save", {}).get("images", [])
+            # find the first output node carrying images, rather than assuming a SaveImage keyed "save"
+            outs = h[pid].get("outputs", {})
+            imgs = next((o["images"] for o in outs.values() if o.get("images")), [])
             if not imgs:
-                return False  # completed with no 'save' output = errored, or a cached re-run (no fresh output)
+                return False  # completed with no image output = errored, or a cached re-run (no fresh output)
             im = imgs[0]
             q = urllib.parse.urlencode({"filename": im["filename"],
                                         "subfolder": im.get("subfolder", ""),
@@ -199,9 +201,9 @@ def main():
     ap.add_argument("--prompt-file")
     ap.add_argument("--out", required=True)
     ap.add_argument("--preset", choices=list(PRESETS), default="turbo")
-    ap.add_argument("--unet", default="krea2_turbo_fp8_scaled.safetensors")
-    ap.add_argument("--clip", default="qwen3vl_4b_fp8_scaled.safetensors")
-    ap.add_argument("--vae", default="qwen_image_vae.safetensors")
+    ap.add_argument("--unet", default=DEFAULT_UNET)
+    ap.add_argument("--clip", default=DEFAULT_CLIP)
+    ap.add_argument("--vae", default=DEFAULT_VAE)
     ap.add_argument("--negative", default="")
     ap.add_argument("--steps", type=int, help="override preset steps")
     ap.add_argument("--cfg", type=float, help="override preset cfg")
@@ -210,8 +212,6 @@ def main():
     ap.add_argument("--height", type=int, default=1024)
     ap.add_argument("--sampler", default="euler")
     ap.add_argument("--scheduler", default="simple")
-    ap.add_argument("--base-shift", type=float, default=0.5)
-    ap.add_argument("--max-shift", type=float, default=1.15)
     ap.add_argument("--lora", help="projector .diff LoRA filename in the ComfyUI loras dir")
     ap.add_argument("--lora-strength", type=float, default=1.0)
     ap.add_argument("--sage", nargs="?", const="auto", default=None,
@@ -228,7 +228,6 @@ def main():
     g = build_graph(prompt, unet=a.unet, clip=a.clip, vae=a.vae, negative=a.negative,
                     steps=steps, cfg=cfg, seed=a.seed, width=a.width, height=a.height,
                     sampler=a.sampler, scheduler=a.scheduler,
-                    base_shift=a.base_shift, max_shift=a.max_shift,
                     lora=a.lora, lora_strength=a.lora_strength, sage=a.sage)
     t0 = time.perf_counter()
     ok = run(g, a.out, server=a.server)

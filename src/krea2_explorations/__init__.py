@@ -1,6 +1,6 @@
 """krea2-explorations: tools for understanding and surgically editing Krea2 conditioning.
 
-See internal/analysis/krea2_conditioning_rebalance_analysis.md for the background and plan.
+See docs/findings.md for the background and findings.
 """
 
 from . import attention_stats, projector, projector_lora, safetensors_patch

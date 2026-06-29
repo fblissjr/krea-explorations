@@ -1,9 +1,8 @@
 """Reusable comparison-grid / contact-sheet builder for experiment figures.
 
-Rows = prompts/variants, columns = arms/methods. One tested implementation so the validators
-(`internal/training/validate_*.py`) and any figure script call the same code instead of re-inlining
-PIL. Depends only on Pillow + stdlib, so it imports cleanly from the isolated training venv too
-(add `<repo>/src` to sys.path).
+Rows = prompts/variants, columns = arms/methods. One tested implementation so the experiment validators
+and any figure script call the same code instead of re-inlining PIL. Depends only on Pillow + stdlib, so
+it imports cleanly from a separate, isolated training venv too (add `<repo>/src` to sys.path).
 
     from krea2_explorations.image_grid import build_contact_sheet
     build_contact_sheet(

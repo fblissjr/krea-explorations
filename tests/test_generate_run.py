@@ -15,6 +15,8 @@ _IMG = {"filename": "x.png", "subfolder": "", "type": "output"}
 _RUNNING = {"abc": {"status": {"completed": False}, "outputs": {}}}                       # present, still running
 _DONE = {"abc": {"status": {"completed": True}, "outputs": {"save": {"images": [_IMG]}}}}  # completed w/ output
 _DONE_EMPTY = {"abc": {"status": {"completed": True}, "outputs": {}}}                      # completed, errored
+# completed, but the SaveImage node is keyed something other than "save" (run() must still find the images)
+_DONE_OTHERKEY = {"abc": {"status": {"completed": True}, "outputs": {"sv_42": {"images": [_IMG]}}}}
 
 
 class _Resp:
@@ -59,3 +61,13 @@ def test_run_returns_false_when_completed_with_no_output(tmp_path, monkeypatch):
     monkeypatch.setattr(generate.urllib.request, "urlopen", fake)
     monkeypatch.setattr(generate.time, "sleep", lambda *_a, **_k: None)
     assert generate.run({"save": {"class_type": "SaveImage", "inputs": {}}}, str(tmp_path / "o.png")) is False
+
+
+def test_run_finds_image_output_under_any_node_key(tmp_path, monkeypatch):
+    # run() must not assume the SaveImage node is keyed "save" -- it scans outputs for any node with images.
+    fake, _ = _fake_urlopen([_DONE_OTHERKEY])
+    monkeypatch.setattr(generate.urllib.request, "urlopen", fake)
+    monkeypatch.setattr(generate.time, "sleep", lambda *_a, **_k: None)
+    out = tmp_path / "o.png"
+    assert generate.run({"sv_42": {"class_type": "SaveImage", "inputs": {}}}, str(out)) is True
+    assert out.read_bytes() == b"PNGBYTES"
