@@ -64,7 +64,7 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
                 sage=None, model_patches=None, filename_prefix="krea2_gen"):
     """Build a ComfyUI API graph for a single Krea 2 txt2img.
 
-    Pass ``loras=[(name, strength), ...]`` to chain several LoRAs on the model edge (e.g. bypass + a
+    Pass ``loras=[(name, strength), ...]`` to chain several LoRAs on the model edge (e.g. a style LoRA + a
     projector ``.diff`` + others), each at its own strength. ``lora=<filename>`` / ``lora_strength`` is
     the single-LoRA shorthand.
 
@@ -79,7 +79,7 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
                   "inputs": {"unet_name": unet, "weight_dtype": "default"}}}
     sampler_model = ["ckpt", 0]
     # one LoraLoaderModelOnly per (name, strength), chained on the model edge: `loras` stacks several
-    # (e.g. bypass + a projector .diff + others), `lora`/`lora_strength` is the single-LoRA shorthand.
+    # (e.g. a style LoRA + a projector .diff + others), `lora`/`lora_strength` is the single-LoRA shorthand.
     chain = list(loras) if loras else ([(lora, lora_strength)] if lora else [])
     for i, (lora_name, strength) in enumerate(chain):
         g[f"lora{i}"] = {"class_type": "LoraLoaderModelOnly",
@@ -268,7 +268,7 @@ def main():
     ap.add_argument("--scheduler", default="simple")
     ap.add_argument("--lora", action="append", default=[], metavar="NAME[:STRENGTH]",
                     help="add a LoRA on the model edge (repeatable; stacks on the preset's LoRAs). Strength "
-                         "after a colon, e.g. bypass.safetensors:0.8 (default 1.0).")
+                         "after a colon, e.g. style.safetensors:0.8 (default 1.0).")
     ap.add_argument("--sage", nargs="?", const="auto", default=None,
                     help="insert the Krea2SageAttention node (our override, no KJNodes). Bare --sage = "
                          "'auto' (sm89 -> fp8_cuda++); or pass a mode (fp8_cuda++, fp16_triton, ...). "

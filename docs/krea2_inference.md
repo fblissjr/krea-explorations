@@ -96,9 +96,9 @@ Workflow C splits the 8-step schedule at step 3: the first stage runs RAW with r
 
 `scripts/generate.py` talks to ComfyUI over HTTP, so it needs the model filenames but no ComfyUI path. It builds the simple and split shapes; you wire the modular shape from the nodes yourself, the way the reference recipes do.
 
-`build_graph()` builds the one-sampler graph. Pass `loras=[(name, strength), ...]` to chain several LoRAs on the model edge, each at its own strength — for example a bypass LoRA, a projector `.diff` and others in one run. `lora=<filename>` is the single-LoRA shorthand.
+`build_graph()` builds the one-sampler graph. Pass `loras=[(name, strength), ...]` to chain several LoRAs on the model edge, each at its own strength — for example a style LoRA, a projector `.diff` and others in one run. `lora=<filename>` is the single-LoRA shorthand.
 
-The presets fix steps, CFG, the checkpoint and any LoRAs together: `turbo` (Turbo checkpoint, 8 steps, CFG off), `raw` (RAW checkpoint, 28 steps, CFG 5.5) and `turbo_lora` (RAW plus the Turbo LoRA, 8 steps, CFG off — the de-distillation dial). On the command line, `--lora name:strength` adds more LoRAs on top of the preset, so you can stack a bypass and a projector edit in one run.
+The presets fix steps, CFG, the checkpoint and any LoRAs together: `turbo` (Turbo checkpoint, 8 steps, CFG off), `raw` (RAW checkpoint, 28 steps, CFG 5.5) and `turbo_lora` (RAW plus the Turbo LoRA, 8 steps, CFG off — the de-distillation dial). On the command line, `--lora name:strength` adds more LoRAs on top of the preset, so you can stack a style LoRA and a projector edit in one run.
 
 `build_split_graph()` builds the 2-stage split that workflow C uses. The high-noise stage carries the CFG and the negative prompt, because the seed and composition are decided in the high-noise steps. The low-noise stage finishes with CFG off.
 

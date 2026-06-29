@@ -28,7 +28,7 @@ def test_amplify_scales_only_the_present_component():
     d = np.array([0.0, 1.0, 0.0, 0.0])
     cond = np.array([[[3.0, 7.0, 1.0, 2.0]]])  # component along d is 7
     out = apply_direction(cond, d, scale=1.0, mode="amplify", normalize=True)
-    assert np.allclose(out[..., 1], 14.0)  # 7*(1+scale) = 14 (scale 1 == bypass's x2)
+    assert np.allclose(out[..., 1], 14.0)  # 7*(1+scale) = 14 (scale 1 doubles the component: an x2 boost)
     assert np.allclose(out[..., [0, 2, 3]], cond[..., [0, 2, 3]])  # orthogonal untouched
 
 

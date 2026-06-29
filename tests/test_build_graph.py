@@ -37,7 +37,7 @@ def test_sampler_model_wires_through_lora_when_set():
 
 
 def test_multiple_loras_chain_each_at_its_own_strength():
-    g = _g(loras=[("bypass.safetensors", 1.0), ("proj.diff", 0.5), ("other.safetensors", 0.8)])
+    g = _g(loras=[("style.safetensors", 1.0), ("proj.diff", 0.5), ("other.safetensors", 0.8)])
     assert g["lora0"]["inputs"]["model"] == ["ckpt", 0]      # first off the loader
     assert g["lora1"]["inputs"]["model"] == ["lora0", 0]     # chained
     assert g["lora2"]["inputs"]["model"] == ["lora1", 0]
