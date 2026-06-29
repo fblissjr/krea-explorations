@@ -72,15 +72,15 @@ Turbo is RAW plus the Turbo LoRA at strength 1.0. So the LoRA strength is a cont
 | C split | RAW then RAW plus Turbo LoRA 1.0 | CFG 2.5 then off | euler | RAW sets composition, LoRA finishes |
 | D SDE finish | RAW plus Turbo LoRA 0.8 | BasicGuider, CFG off | dpmpp_2m_sde eta 0.5 | textured, exponential finish |
 
-Workflow C splits the 8-step schedule at step 3 with `SplitSigmas`. The first stage runs RAW with real CFG to set the composition. The second stage runs the Turbo LoRA with CFG off to finish, taking the leftover noise from the first stage.
-
-Workflow C is available as `build_split_graph` in `scripts/generate.py`. The other three follow the modular graph described above.
+Workflow C splits the 8-step schedule at step 3: the first stage runs RAW with real CFG to set the composition, the second runs the Turbo LoRA with CFG off to finish, taking the leftover noise from the first stage. `build_split_graph` in `scripts/generate.py` does this handoff with two `KSamplerAdvanced` nodes and start and end step ranges, rather than a `SplitSigmas` node. The other three recipes follow the modular graph described above.
 
 ## The generate.py helpers
 
-`scripts/generate.py` talks to ComfyUI over HTTP, so it needs the model filenames but no ComfyUI path. It exposes 3 functions and the default model filenames as constants.
+`scripts/generate.py` talks to ComfyUI over HTTP, so it needs the model filenames but no ComfyUI path. It builds the simple and split shapes; you wire the modular shape from the nodes yourself, the way the reference recipes do.
 
-`build_graph()` builds the one-sampler graph. Pass a LoRA filename to insert a `LoraLoaderModelOnly` before the sampler, for stock-against-edited comparisons.
+`build_graph()` builds the one-sampler graph. Pass `loras=[(name, strength), ...]` to chain several LoRAs on the model edge, each at its own strength — for example a bypass LoRA, a projector `.diff` and others in one run. `lora=<filename>` is the single-LoRA shorthand.
+
+The presets fix steps, CFG, the checkpoint and any LoRAs together: `turbo` (Turbo checkpoint, 8 steps, CFG off), `raw` (RAW checkpoint, 28 steps, CFG 5.5) and `turbo_lora` (RAW plus the Turbo LoRA, 8 steps, CFG off — the de-distillation dial). On the command line, `--lora name:strength` adds more LoRAs on top of the preset, so you can stack a bypass and a projector edit in one run.
 
 `build_split_graph()` builds the 2-stage split that workflow C uses. The high-noise stage carries the CFG and the negative prompt, because the seed and composition are decided in the high-noise steps. The low-noise stage finishes with CFG off.
 

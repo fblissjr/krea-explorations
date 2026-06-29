@@ -9,8 +9,8 @@ Key points baked in:
   it only re-derives that resolution-aware `mu`, which is a proven pixel-identical no-op at the ~1MP
   trained area (it only differs far off-1MP, where it's a weak lever anyway).
 - Deterministic euler/simple + fixed seed by default, so A/B comparisons isolate your change.
-- Presets: `turbo` (8 steps, CFG off) and `raw` (28 steps, CFG 4.5). RAW also needs `--unet` set
-  to a RAW checkpoint.
+- Presets: `turbo` (8 steps, CFG off) and `raw` (28 steps, CFG 5.5). `--preset raw` auto-selects the
+  RAW checkpoint; pass `--unet` to override.
 
 Examples:
     uv run python scripts/generate.py "a red fox in snow" --out out.png
@@ -24,25 +24,35 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-# ComfyUI cfg = reference guidance + 1 (Krea: v = cond + g*(cond-uncond); ComfyUI: uncond + cfg*(...)).
-# Reference inference.py default guidance=4.5 -> ComfyUI cfg=5.5. Turbo runs CFG off (cfg=1.0).
-PRESETS = {"turbo": dict(steps=8, cfg=1.0), "raw": dict(steps=28, cfg=5.5)}
-
 # Default model filenames (as they appear in the ComfyUI models dirs). Single source so harnesses can
 # import these instead of re-hardcoding the strings.
 DEFAULT_UNET = "krea2_turbo_fp8_scaled.safetensors"
+DEFAULT_RAW_UNET = "krea2_raw_fp8_scaled.safetensors"
 DEFAULT_CLIP = "qwen3vl_4b_fp8_scaled.safetensors"
 DEFAULT_VAE = "qwen_image_vae.safetensors"
+TURBO_LORA = "krea2_turbo_lora_rank_64_bf16.safetensors"
+
+# ComfyUI cfg = reference guidance + 1 (Krea: v = cond + g*(cond-uncond); ComfyUI: uncond + cfg*(...)).
+# Reference inference.py default guidance=4.5 -> ComfyUI cfg=5.5. Turbo runs CFG off (cfg=1.0).
+# Each preset fully specifies a recipe: steps, cfg, the checkpoint, and (lora_name, strength) pairs. So
+# `--preset raw` never silently runs on the Turbo checkpoint, and `turbo_lora` is RAW + the Turbo LoRA
+# (the de-distillation dial) turnkey.
+PRESETS = {
+    "turbo":      dict(steps=8,  cfg=1.0, unet=DEFAULT_UNET,     loras=()),
+    "raw":        dict(steps=28, cfg=5.5, unet=DEFAULT_RAW_UNET, loras=()),
+    "turbo_lora": dict(steps=8,  cfg=1.0, unet=DEFAULT_RAW_UNET, loras=((TURBO_LORA, 1.0),)),
+}
 
 
 def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=42,
                 width=1024, height=1024, sampler="euler", scheduler="simple",
-                lora=None, lora_strength=1.0,
+                loras=None, lora=None, lora_strength=1.0,
                 sage=None, filename_prefix="krea2_gen"):
-    """Build a ComfyUI API graph for a single Krea 2 txt2img with the flow shift applied.
+    """Build a ComfyUI API graph for a single Krea 2 txt2img.
 
-    Pass ``lora=<filename in the ComfyUI loras dir>`` (e.g. a projector ``.diff`` LoRA) to insert a
-    ``LoraLoaderModelOnly`` before the sampler — used for stock-vs-rebalanced comparisons.
+    Pass ``loras=[(name, strength), ...]`` to chain several LoRAs on the model edge (e.g. bypass + a
+    projector ``.diff`` + others), each at its own strength. ``lora=<filename>`` / ``lora_strength`` is
+    the single-LoRA shorthand.
 
     Pass ``sage=<mode>`` (e.g. "auto") to insert the ``Krea2SageAttention`` node (our own
     optimized_attention_override, no KJNodes) on the model edge before the sampler — the Phase-0
@@ -51,10 +61,13 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
     g = {"ckpt": {"class_type": "UNETLoader",
                   "inputs": {"unet_name": unet, "weight_dtype": "default"}}}
     sampler_model = ["ckpt", 0]
-    if lora:
-        g["lora"] = {"class_type": "LoraLoaderModelOnly",
-                     "inputs": {"model": ["ckpt", 0], "lora_name": lora, "strength_model": lora_strength}}
-        sampler_model = ["lora", 0]
+    # one LoraLoaderModelOnly per (name, strength), chained on the model edge: `loras` stacks several
+    # (e.g. bypass + a projector .diff + others), `lora`/`lora_strength` is the single-LoRA shorthand.
+    chain = list(loras) if loras else ([(lora, lora_strength)] if lora else [])
+    for i, (lora_name, strength) in enumerate(chain):
+        g[f"lora{i}"] = {"class_type": "LoraLoaderModelOnly",
+                         "inputs": {"model": sampler_model, "lora_name": lora_name, "strength_model": strength}}
+        sampler_model = [f"lora{i}", 0]
     if sage and sage != "disabled":
         g["sage"] = {"class_type": "Krea2SageAttention",
                      "inputs": {"model": sampler_model, "sage_mode": sage}}
@@ -195,13 +208,19 @@ def run(graph, out_path, server="http://127.0.0.1:8188", timeout=600,
     return False
 
 
+def _parse_lora(spec):
+    """Parse a CLI LoRA spec 'name[:strength]' into (name, strength); strength defaults to 1.0."""
+    name, _, strength = spec.partition(":")
+    return (name, float(strength) if strength else 1.0)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("prompt", nargs="?", help="prompt text (or use --prompt-file)")
     ap.add_argument("--prompt-file")
     ap.add_argument("--out", required=True)
     ap.add_argument("--preset", choices=list(PRESETS), default="turbo")
-    ap.add_argument("--unet", default=DEFAULT_UNET)
+    ap.add_argument("--unet", default=None, help="checkpoint filename; defaults to the checkpoint for --preset")
     ap.add_argument("--clip", default=DEFAULT_CLIP)
     ap.add_argument("--vae", default=DEFAULT_VAE)
     ap.add_argument("--negative", default="")
@@ -212,8 +231,9 @@ def main():
     ap.add_argument("--height", type=int, default=1024)
     ap.add_argument("--sampler", default="euler")
     ap.add_argument("--scheduler", default="simple")
-    ap.add_argument("--lora", help="projector .diff LoRA filename in the ComfyUI loras dir")
-    ap.add_argument("--lora-strength", type=float, default=1.0)
+    ap.add_argument("--lora", action="append", default=[], metavar="NAME[:STRENGTH]",
+                    help="add a LoRA on the model edge (repeatable; stacks on the preset's LoRAs). Strength "
+                         "after a colon, e.g. bypass.safetensors:0.8 (default 1.0).")
     ap.add_argument("--sage", nargs="?", const="auto", default=None,
                     help="insert the Krea2SageAttention node (our override, no KJNodes). Bare --sage = "
                          "'auto' (sm89 -> fp8_cuda++); or pass a mode (fp8_cuda++, fp16_triton, ...). "
@@ -225,15 +245,17 @@ def main():
     p = PRESETS[a.preset]
     steps = int(a.steps or p["steps"])
     cfg = float(a.cfg if a.cfg is not None else p["cfg"])
-    g = build_graph(prompt, unet=a.unet, clip=a.clip, vae=a.vae, negative=a.negative,
+    unet = a.unet or p["unet"]                                   # --preset picks its checkpoint unless overridden
+    loras = list(p["loras"]) + [_parse_lora(x) for x in a.lora]  # preset LoRAs first, then any --lora, in order
+    g = build_graph(prompt, unet=unet, clip=a.clip, vae=a.vae, negative=a.negative,
                     steps=steps, cfg=cfg, seed=a.seed, width=a.width, height=a.height,
                     sampler=a.sampler, scheduler=a.scheduler,
-                    lora=a.lora, lora_strength=a.lora_strength, sage=a.sage)
+                    loras=loras, sage=a.sage)
     t0 = time.perf_counter()
     ok = run(g, a.out, server=a.server)
     elapsed = time.perf_counter() - t0
     print(f"{'saved' if ok else 'FAILED'} {a.out}  (preset={a.preset} steps={steps} cfg={cfg} "
-          f"{a.width}x{a.height} seed={a.seed} sage={a.sage or 'off'} wall={elapsed:.2f}s)")
+          f"{a.width}x{a.height} seed={a.seed} loras={loras or 'none'} sage={a.sage or 'off'} wall={elapsed:.2f}s)")
 
 
 if __name__ == "__main__":

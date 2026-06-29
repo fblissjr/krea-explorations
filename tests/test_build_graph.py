@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from generate import build_graph  # noqa: E402
+from generate import PRESETS, DEFAULT_RAW_UNET, DEFAULT_UNET, TURBO_LORA, build_graph  # noqa: E402
 
 
 def _g(**kw):
@@ -31,9 +31,18 @@ def test_sampler_model_wires_to_unet_without_lora():
 
 def test_sampler_model_wires_through_lora_when_set():
     g = _g(lora="proj.safetensors", lora_strength=0.5)
-    assert g["sampler"]["inputs"]["model"] == ["lora", 0]
-    assert g["lora"]["inputs"]["model"] == ["ckpt", 0]
-    assert g["lora"]["inputs"]["strength_model"] == 0.5
+    assert g["sampler"]["inputs"]["model"] == ["lora0", 0]
+    assert g["lora0"]["inputs"]["model"] == ["ckpt", 0]
+    assert g["lora0"]["inputs"]["strength_model"] == 0.5
+
+
+def test_multiple_loras_chain_each_at_its_own_strength():
+    g = _g(loras=[("bypass.safetensors", 1.0), ("proj.diff", 0.5), ("other.safetensors", 0.8)])
+    assert g["lora0"]["inputs"]["model"] == ["ckpt", 0]      # first off the loader
+    assert g["lora1"]["inputs"]["model"] == ["lora0", 0]     # chained
+    assert g["lora2"]["inputs"]["model"] == ["lora1", 0]
+    assert g["sampler"]["inputs"]["model"] == ["lora2", 0]   # sampler reads the last in the chain
+    assert [g[f"lora{i}"]["inputs"]["strength_model"] for i in range(3)] == [1.0, 0.5, 0.8]
 
 
 def test_sage_node_inserted_on_model_edge():
@@ -51,3 +60,18 @@ def test_real_negative_when_cfg_on():
 def test_zeroed_negative_when_cfg_off():
     g = _g(cfg=1.0)
     assert g[g["sampler"]["inputs"]["negative"][0]]["class_type"] == "ConditioningZeroOut"
+
+
+def test_presets_specify_unet_and_loras():
+    # every preset fully specifies the recipe, so --preset raw never runs on the Turbo checkpoint
+    for name, p in PRESETS.items():
+        assert {"steps", "cfg", "unet", "loras"} <= set(p), name
+    assert PRESETS["raw"]["unet"] == DEFAULT_RAW_UNET and PRESETS["raw"]["loras"] == ()
+    assert PRESETS["turbo"]["unet"] == DEFAULT_UNET
+
+
+def test_turbo_lora_preset_is_raw_plus_turbo_lora():
+    p = PRESETS["turbo_lora"]
+    assert p["unet"] == DEFAULT_RAW_UNET                    # RAW checkpoint
+    assert p["loras"] == ((TURBO_LORA, 1.0),)              # plus the Turbo LoRA -- the de-distillation dial
+    assert (p["steps"], p["cfg"]) == (8, 1.0)
