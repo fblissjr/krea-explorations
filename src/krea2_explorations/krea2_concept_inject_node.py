@@ -5,9 +5,9 @@ projector; this operates on the conditioning that *feeds* the projector and aims
 single measured concept direction d (a 12x2560 difference-of-means axis, flattened to 30720 to match Krea2's
 ``(B, seq, 12*2560)`` conditioning):
 
-  amplify     cond += scale * (cond . d̂) d̂   -- boost the component ALREADY present (a magnitude move, aimed).
-                                                 Mathematically can't conjure an ABSENT (unpaired) concept ->
-                                                 doubles as a test of the concept-pairing model.
+  amplify     cond += scale * (cond . d̂) d̂   -- scale the component along d̂. The projection is never exactly
+                                                 0, so at high scale this CAN conjure a seemingly-absent concept
+                                                 (a magnitude lever, NOT a presence test -- measured, see docs).
   add         cond += scale * d̂               -- inject the direction regardless of what's present.
   subtract    cond -= scale * d̂
   project_out cond -= (cond . d̂) d̂            -- remove the concept entirely.
@@ -143,7 +143,7 @@ class Krea2ConceptInject:
     FUNCTION = "apply"
     CATEGORY = "conditioning/Krea2"
     DESCRIPTION = ("A deep-band magnitude lever, aimed: amplify/inject/remove a single measured concept direction "
-                   "on Krea2 conditioning. 'amplify' boosts the present component (can't conjure absent ones).")
+                   "on Krea2 conditioning. 'amplify' scales the component along the axis; at high scale it can conjure it.")
 
     def apply(self, conditioning, mode, scale, direction=None, direction_path="", normalize=True):
         import numpy as np

@@ -32,12 +32,14 @@ def test_amplify_scales_only_the_present_component():
     assert np.allclose(out[..., [0, 2, 3]], cond[..., [0, 2, 3]])  # orthogonal untouched
 
 
-def test_amplify_cannot_conjure_an_absent_component():
-    # THE key property: amplify only boosts what's present -> can't create an absent (unpaired) concept.
+def test_amplify_is_a_fixed_point_at_exactly_zero_component():
+    # Math edge case: with an EXACTLY-zero projection, amplify returns cond unchanged (a fixed point). This is
+    # NOT "amplify can't conjure an absent concept" -- real conditionings are never exactly orthogonal, so at
+    # high scale amplify blows the tiny residual up into the concept (measured: a face grows on a landscape).
     d = np.array([0.0, 1.0, 0.0, 0.0])
-    cond = np.array([[[3.0, 0.0, 1.0, 2.0]]])  # zero component along d
+    cond = np.array([[[3.0, 0.0, 1.0, 2.0]]])  # EXACTLY zero component along d (synthetic; a real cond never is)
     out = apply_direction(cond, d, scale=50.0, mode="amplify", normalize=True)
-    assert np.allclose(out, cond)  # nothing to amplify -> unchanged at any scale
+    assert np.allclose(out, cond)  # exact-zero is a fixed point of amplify
 
 
 def test_project_out_removes_the_component():
