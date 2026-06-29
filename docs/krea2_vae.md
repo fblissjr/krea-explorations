@@ -31,6 +31,14 @@ We verified this from the weights: krea2RealVae's encoder matches the original, 
 - **Want the most detail and have the VRAM:** PiD.
 - **Text or document images:** the stock VAE is the right choice — its decoder is tuned for legible small text.
 
+## What we measured
+
+We ran a decoder-isolation test on 2026-06-29: generate one latent per prompt, then decode that same latent through each VAE, so only the decoder changes. 4 benign prompts (a portrait, a macro metal shot, a cafe sign, a forest), 2 seeds, matched native-resolution crops.
+
+![Matched crops across the three decoders: rows are skin, metal, sign lettering and foliage; columns are stock, krea2RealVae and spacepxl.](figures/vae_decoder_crops.png)
+
+The result is a modest but consistent win for krea2RealVae over stock. It is a little crisper on skin, freckles and foliage, and about level on the metal, and the direction holds across both seeds. It does not soften the sign lettering, so the default costs nothing on text at that size. spacepxl matches krea2RealVae at the same display size — its gain is the native 2x, so reach for it only when you want 2x output. Any color or contrast shift from the channel averaging is negligible. The differences are small at 8 steps; a more converged 28-step latent carries more fine detail, so the gap may be wider there (not yet run).
+
 ## Confidence and what is still open
 
-Low to medium. The build reverse-engineering is exact (measured from the weights). The quality ranking (krea2RealVae crisper than stock) is a visual read on a few prompts. The proper VAE-quality test is a round-trip — encode a real image, decode it, compare to the original across VAEs — which is deferred. See [findings.md](findings.md) for the conditioning-side work this sits alongside.
+Medium. The build reverse-engineering is exact (measured from the weights), and the stock-versus-krea2RealVae ranking now has a 2-seed decoder-isolation read behind it, not just an impression. Still open: a true round-trip test (encode a real image, decode it, compare to the original across VAEs), the same comparison on a 28-step RAW latent, and a harder text case (small or dense lettering, where the stock decoder's text finetune should help most). See [findings.md](findings.md) for the conditioning-side work this sits alongside.
