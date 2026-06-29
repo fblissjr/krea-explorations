@@ -14,6 +14,8 @@ each section):
 
 ---
 
+<a id="layer-probes" name="layer-probes"></a>
+
 Basis: solo (keep-one) + leave-one-out (drop-one) sweeps on **one prompt** (portrait), seed 42,
 Krea2 **Turbo fp8**, 8 steps euler/simple, image-level **RGB-RMS** distance. Cross-style sweeps
 (anime, illustration) are done — see the Cross-style update below.
@@ -63,6 +65,8 @@ not a discovery. The genuinely model-specific questions it raised — now **addr
 3. **Where the bias lives** — answered: the encoder is **frozen stock `Qwen/Qwen3-VL-4B-Instruct`** (Krea's
    loading code does `from_pretrained` + `.eval().requires_grad_(False)`; its config is field-for-field
    identical to stock), so all learned aggregation is **DiT-side**. ✓
+
+<a id="layer-fusion" name="layer-fusion"></a>
 
 ## Layer-fusion attention — measured behavior (2026-06-26)
 
@@ -125,6 +129,8 @@ Data: `data/raw_validation/raw_vs_turbo.json`.
 
 *The 2 refiner blocks (post-projector token attention) are diagonal-dominant local self-attention — each token
 attends mostly to itself + near neighbors, with no dominant sink. Structurally unlike the layerwise L20 hub.*
+
+<a id="attributes" name="attributes"></a>
 
 ## Attributes vs the projector-rebalance lever (2026-06-26)
 
@@ -297,6 +303,8 @@ restores diversity at Turbo-sharp quality. Full figure set (cfg headroom, negati
   uniform de-distill, **and** the split, and RAW is pre-distill — so the uncond/negative direction is a weak
   semantic lever on this model, not something de-distillation or the split brings back. The split's value is
   **diversity + CFG headroom**, not negatives.
+
+<a id="labeled-axis" name="labeled-axis"></a>
 
 ## Labeled-axis steering — what predicts it, and how clean is an axis? (2026-06-29)
 
