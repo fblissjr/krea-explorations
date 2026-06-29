@@ -98,14 +98,14 @@ the clean ceiling** (row 3: chromatic-noise artifacts, worse at k5).
 
 ## 3. What it does *not* buy: negative-prompt control
 
-![Same grid read for the negative: the strong style negative never flips style; at cfg 8 it only adds artifacts.](figures/two_sampler_split_negative.png)
+![Negative-prompt control across three arms (Turbo, uniform LoRA s0.5, split k3) at cfg 2.5, seed-matched: the strong style negative never flips the photoreal look.](figures/two_sampler_split_negative.png)
 
 *Three arms (Turbo cfg2.5 / uniform s0.5 / split) × {empty, strong style negative}; the negative never flips the photoreal look.*
 
 Putting the negative on the high-noise steps does **not** make it bite. A negative can't override an explicit
 positive mention (an anti-"mug" negative never removed a prompted mug, in any arm), and a strong global style
-negative ("photograph, photoreal, …") never flips the style — at cfg 8 it only adds color artifacts, not a
-style change. This holds for pure Turbo, uniform de-distill, *and* the split, and RAW is the *pre-distill*
+negative ("photograph, photoreal, …") never flips the style — at most it adds color artifacts (the green and
+red speckle in the Turbo arm), not a style change. This holds for pure Turbo, uniform de-distill, *and* the split, and RAW is the *pre-distill*
 model — so the **uncond/negative direction is just a weak semantic lever on this Qwen3-VL-conditioned model**,
 not something the split (or de-distillation) restores. Use the split for diversity + CFG *headroom*, not for
 negative prompting.
