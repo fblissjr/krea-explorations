@@ -128,9 +128,12 @@ one, don't mix:
   bitsandbytes): used only by the LoRA training/validation harnesses in `internal/training/`. It does NOT
   have the project package installed — those scripts import shared code (e.g. the grid util) by adding
   `<repo>/src` to `sys.path`. Keep shared helpers Pillow/stdlib-only so they import there.
-- **`uv run` prints `VIRTUAL_ENV=… does not match the project environment path .venv … will be ignored`** —
-  harmless: ComfyUI's `.venv` is active in the shell, but uv still uses the project `.venv`. Pipe through
-  `grep -v VIRTUAL_ENV` to quieten output.
+- **`uv run` (project `.venv`) vs `uv run --active` (the active ComfyUI `.venv`).** Plain `uv run` uses the
+  project venv — right for the package + tests, but it lacks torch/transformers/comfy, so the **inference +
+  model-loading harnesses in `internal/scripts/`** (render harnesses, `score_caption_register.py`,
+  `exp_ood_register.py`) need **`uv run --active`** to pick up ComfyUI's `.venv`. The `VIRTUAL_ENV=… does not
+  match … will be ignored` warning is harmless under plain `uv run` (you wanted the project venv) but is the
+  tell you forgot `--active` on a model-loading run. Pipe through `grep -v VIRTUAL_ENV` to quieten.
 - **Hardware: one 24 GB RTX 4090.** A 12B bf16 DiT (~24 GB) won't fit with headroom → the canonical DiT is
   **fp8**; the bf16 qwen3vl encoder is ~free (offloaded before the DiT sampling pass). Don't propose a bf16 DiT.
   What's installed: `curl <server>/object_info/{UNETLoader,VAELoader,CLIPLoader}` lists the models/encoders/VAEs
