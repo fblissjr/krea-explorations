@@ -126,6 +126,24 @@ one, don't mix:
   have the project package installed — those scripts import shared code (e.g. the grid util) by adding
   `<repo>/src` to `sys.path`. Keep shared helpers Pillow/stdlib-only so they import there.
 
+## Knowledge management — the `internal/` wiki (READ `internal/findings/INDEX.md` first)
+
+`internal/` is a **two-layer knowledge wiki**; keep the layers separate:
+- **Living synthesis** (`internal/reference/krea2_master_synthesis.md`) — the *current understanding*. REWRITE it
+  as understanding changes. The single entry point for "what we believe now."
+- **Evidence ledger** (`internal/findings/`, mapped by `findings/INDEX.md`) — dated, **append-only** records of
+  the *measurements*. A measurement never goes stale; never rewrite or delete one.
+
+When you run an experiment / add knowledge / overturn an assumption:
+1. **Record** the measurement in the right `findings/` page (numbers/method/date verbatim, under its `Status:` line).
+2. **Rewrite** the interpretation in the master synthesis if a conclusion changed.
+3. If a finding is superseded, **add a forward-pointer** to its record — keep the original measurement beside it.
+4. **Update `findings/INDEX.md`** (one row per page).
+5. **Archive** (`findings/archive/`) ONLY disposable scaffolding (pre-run plans/specs) — NEVER a measured finding.
+
+Rule of thumb: **interpretation is rewritten · evidence is appended · measurements are never deleted.** Full
+protocol + the page index: `internal/findings/INDEX.md`.
+
 ## Experiment harnesses & logs
 
 - `internal/` is gitignored — experiment scripts, pre-registrations, training notes, session logs, and any
