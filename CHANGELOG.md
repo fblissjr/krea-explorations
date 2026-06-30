@@ -31,6 +31,9 @@ All notable changes to this project are documented here. Format follows
   `generate.py` is the low-level builder + HTTP layer beneath. `resolve_clip` mirrors `resolve_vae` for
   graceful encoder fallback. A test guards tracked scripts against re-inlined `ModelSamplingFlux` /
   `ConditioningZeroOut` / stock-VAE drift.
+- `generate.build_graph` composition seams: `model_patches` (model edge, via `model_node`) and `cond_patches`
+  (positive-conditioning edge, via `cond_node`) — hang a harness's custom node on the shared builder instead of
+  re-inlining the graph, so the canonical skeleton stays in one place.
 
 ### Changed
 - `krea2_resolution_node`: expanded the preset list with the common aspect ratios — 16:9/9:16 (1280x720),

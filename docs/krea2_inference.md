@@ -98,6 +98,8 @@ Workflow C splits the 8-step schedule at step 3: the first stage runs RAW with r
 
 `build_graph()` builds the one-sampler graph. Pass `loras=[(name, strength), ...]` to chain several LoRAs on the model edge, each at its own strength — for example a style LoRA, a projector `.diff` and others in one run. `lora=<filename>` is the single-LoRA shorthand.
 
+For a harness that bolts a custom node onto a render, `build_graph()` takes two composition seams so you compose onto the shared builder instead of re-inlining the whole graph: `model_patches=[model_node("MyNode", ...)]` hangs a node on the model edge after the LoRAs (an attention bias, a residual steer, a capture node), and `cond_patches=[cond_node("MyNode", ...)]` wraps the positive conditioning (a concept inject or project-out). The negative is left untouched.
+
 The presets fix steps, CFG, the checkpoint and any LoRAs together: `turbo` (Turbo checkpoint, 8 steps, CFG off), `raw` (RAW checkpoint, 28 steps, CFG 5.5) and `turbo_lora` (RAW plus the Turbo LoRA, 8 steps, CFG off — the de-distillation dial). On the command line, `--lora name:strength` adds more LoRAs on top of the preset, so you can stack a style LoRA and a projector edit in one run.
 
 `build_split_graph()` is a low-level two-stage split primitive (two `KSamplerAdvanced` nodes, `scheduler=simple`): the high-noise stage carries the CFG and the negative prompt, because the seed and composition are decided in the high-noise steps, and the low-noise stage finishes with CFG off. It is a building block some harnesses use; the canonical workflow C lives in `scripts/canonical_workflows.py` on the modular stack.
