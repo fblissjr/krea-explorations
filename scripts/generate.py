@@ -235,34 +235,29 @@ def _parse_lora(spec):
     return (name, float(strength) if strength else 1.0)
 
 
-def _pick_vae(available, preferred=DEFAULT_VAE, fallback=STOCK_VAE):
-    """Return `preferred` if it's in the `available` VAE list, else `fallback`. Lets the default be the
-    community krea2RealVae without breaking for anyone who hasn't downloaded it."""
+def _pick(available, preferred, fallback):
+    """Return `preferred` if it's in `available`, else `fallback`."""
     return preferred if preferred in available else fallback
+
+
+def _resolve(server, loader, field, preferred, fallback):
+    """Pick `preferred` if the server's `loader` lists it under `field`, else `fallback`. One probe so a
+    bf16/krea2RealVae default degrades to the prior default instead of hard-failing the loader on a bare install."""
+    try:
+        info = json.loads(urllib.request.urlopen(server + f"/object_info/{loader}", timeout=10).read())
+        return _pick(info[loader]["input"]["required"][field][0], preferred, fallback)
+    except Exception:
+        return fallback
 
 
 def resolve_vae(server, preferred=DEFAULT_VAE, fallback=STOCK_VAE):
-    """Pick `preferred` if the ComfyUI server has it, else `fallback` (stock qwen_image_vae)."""
-    try:
-        info = json.loads(urllib.request.urlopen(server + "/object_info/VAELoader", timeout=10).read())
-        return _pick_vae(info["VAELoader"]["input"]["required"]["vae_name"][0], preferred, fallback)
-    except Exception:
-        return fallback
-
-
-def _pick_clip(available, preferred=DEFAULT_CLIP, fallback=STOCK_CLIP):
-    """Return `preferred` if it's in the `available` CLIP list, else `fallback`. Mirrors _pick_vae so the bf16
-    encoder default degrades to the fp8 encoder instead of hard-failing CLIPLoader on a bf16-less install."""
-    return preferred if preferred in available else fallback
+    """krea2RealVae if the server has it, else stock qwen_image_vae."""
+    return _resolve(server, "VAELoader", "vae_name", preferred, fallback)
 
 
 def resolve_clip(server, preferred=DEFAULT_CLIP, fallback=STOCK_CLIP):
-    """Pick `preferred` if the ComfyUI server has it, else `fallback` (the fp8 encoder)."""
-    try:
-        info = json.loads(urllib.request.urlopen(server + "/object_info/CLIPLoader", timeout=10).read())
-        return _pick_clip(info["CLIPLoader"]["input"]["required"]["clip_name"][0], preferred, fallback)
-    except Exception:
-        return fallback
+    """bf16 qwen3vl encoder if the server has it, else the fp8 encoder."""
+    return _resolve(server, "CLIPLoader", "clip_name", preferred, fallback)
 
 
 def main():
