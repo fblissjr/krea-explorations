@@ -86,6 +86,9 @@ Traps a re-inline (or copying an older harness's `graph()`) gets wrong:
 - **Scheduler `beta57`** in the canonical stack (not `simple`); a real (empty) negative, never
   `ConditioningZeroOut`.
 
+These rules are enforced, not just documented: `tests/test_no_reinlined_graphs.py` fails if any tracked
+`scripts/` builder re-inlines a `ModelSamplingFlux` / `ConditioningZeroOut` node or hardcodes the stock VAE.
+
 For training data or any quality-sensitive render use the split (`C`) or the Turbo-LoRA dial — not bare RAW-28 +
 stock VAE.
 
@@ -118,13 +121,24 @@ one, don't mix:
 - Loadable via ComfyUI **"Load (API format)"** or re-POST as `{"prompt": <json>}`. A dumped JSON is a single
   arm; re-running the harness reproduces the full multi-arm grid.
 
-## Two virtualenvs (this bites)
+## Environment — venvs, hardware, tooling (this bites)
 
 - **Project `.venv`** (uv, `uv run ...`): the importable `krea2_explorations` package + its tests.
 - **A separate, isolated training venv** (CUDA torch + editable diffusers w/ `Krea2Pipeline`, peft,
   bitsandbytes): used only by the LoRA training/validation harnesses in `internal/training/`. It does NOT
   have the project package installed — those scripts import shared code (e.g. the grid util) by adding
   `<repo>/src` to `sys.path`. Keep shared helpers Pillow/stdlib-only so they import there.
+- **`uv run` prints `VIRTUAL_ENV=… does not match the project environment path .venv … will be ignored`** —
+  harmless: ComfyUI's `.venv` is active in the shell, but uv still uses the project `.venv`. Pipe through
+  `grep -v VIRTUAL_ENV` to quieten output.
+- **Hardware: one 24 GB RTX 4090.** A 12B bf16 DiT (~24 GB) won't fit with headroom → the canonical DiT is
+  **fp8**; the bf16 qwen3vl encoder is ~free (offloaded before the DiT sampling pass). Don't propose a bf16 DiT.
+  What's installed: `curl <server>/object_info/{UNETLoader,VAELoader,CLIPLoader}` lists the models/encoders/VAEs
+  (`resolve_vae`/`resolve_clip` do this at run time); model files are symlinks into a storage dir, so
+  `ls models/...` shows link targets, not byte sizes.
+- **`grep -r --include='*.py' .` has returned empty when it shouldn't** (hit twice this session, once leading to
+  a wrong "function moved" conclusion) — prefer naming the dirs (`grep -rn X scripts internal/scripts`) or
+  `git grep` (tracked-only; also the right tool for path-leak / privacy scans before committing).
 
 ## Knowledge management — the `internal/` wiki (READ `internal/findings/INDEX.md` first)
 
