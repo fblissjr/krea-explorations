@@ -1,4 +1,4 @@
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 # How Krea 2 inference works
 
@@ -32,7 +32,7 @@ The Qwen3-VL model here is the text encoder. It does not see the image, so it do
 
 The `Krea2Resolution` node gives you the workable resolutions. You either:
 
-- pick a preset bucket, all near 1 megapixel and all divisible by 16, from 1024 x 1024 through to 1536 x 640 and its rotations
+- pick a preset bucket, all near 1 megapixel and all divisible by 16. The list covers the common aspect ratios in both landscape and portrait: 1:1, 5:4, 9:7, 4:3, 3:2, 7:4, 16:9, 21:9, 12:5, plus the 19:13 SDXL bucket. Each label is the exact reduced ratio of its dimensions, so 1280 x 720 is true 16:9 and 1248 x 832 is true 3:2
 - pass a custom width and height to snap to the nearest multiple of 16, with an option to first rescale to about 1 megapixel
 
 The node outputs width and height to feed into `EmptyLatentImage`.

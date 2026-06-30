@@ -27,6 +27,12 @@ All notable changes to this project are documented here. Format follows
   shared attention, built for Krea2's real `[32,48,48]` RoPE (not the community fork's `[64,64]`). Patches
   the image DiT blocks only (txtfusion untouched); renoise-to-sigma reference injection (no RF-inversion).
 
+### Changed
+- `krea2_resolution_node`: expanded the preset list with the common aspect ratios — 16:9/9:16 (1280x720),
+  4:3/3:4 (1152x864), 3:2/2:3 (1248x832), 5:4/4:5 (1120x896), 21:9/9:21 (1568x672), each exact, /16, ~1 MP.
+  Corrected the mislabeled `1216x832 (3:2)` / `832x1216 (2:3)` buckets (really 19:13, 1.46:1) to their true
+  ratio, and added a test asserting every preset's `(a:b)` label matches its actual dimensions within 1%.
+
 ### Findings
 - Interpretability of the layer aggregation: a universal mid-layer attention hub (L20) and a contrastive
   projector (positive on mid layers, negative on deep layers). See README / `docs/findings.md`.

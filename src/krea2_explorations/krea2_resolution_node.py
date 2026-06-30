@@ -11,15 +11,27 @@ rescaling to ~1 MP first). Outputs width/height ints to feed EmptyLatentImage. P
 
 from __future__ import annotations
 
-# ~1 MP aspect buckets, every dim divisible by 16
+# ~1 MP aspect buckets, every dim divisible by 16, ordered square -> wide (each landscape paired with its
+# portrait rotation). Labels are the *exact* reduced ratio of the dims -- a test enforces label == w/h, so a
+# bucket like 1216x832 is 19:13 (1.46:1), NOT the 3:2 it was once mislabeled as (true 3:2 is 1248x832).
 BUCKETS = {
     "1024x1024 (1:1)":  (1024, 1024),
+    "1120x896 (5:4)":   (1120, 896),
+    "896x1120 (4:5)":   (896, 1120),
     "1152x896 (9:7)":   (1152, 896),
     "896x1152 (7:9)":   (896, 1152),
-    "1216x832 (3:2)":   (1216, 832),
-    "832x1216 (2:3)":   (832, 1216),
+    "1152x864 (4:3)":   (1152, 864),
+    "864x1152 (3:4)":   (864, 1152),
+    "1216x832 (19:13)": (1216, 832),
+    "832x1216 (13:19)": (832, 1216),
+    "1248x832 (3:2)":   (1248, 832),
+    "832x1248 (2:3)":   (832, 1248),
     "1344x768 (7:4)":   (1344, 768),
     "768x1344 (4:7)":   (768, 1344),
+    "1280x720 (16:9)":  (1280, 720),
+    "720x1280 (9:16)":  (720, 1280),
+    "1568x672 (21:9)":  (1568, 672),
+    "672x1568 (9:21)":  (672, 1568),
     "1536x640 (12:5)":  (1536, 640),
     "640x1536 (5:12)":  (640, 1536),
     "custom (snap w/h)": None,
