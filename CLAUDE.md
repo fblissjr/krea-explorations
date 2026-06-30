@@ -1,6 +1,6 @@
 # CLAUDE.md — krea2-explorations
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 Project memory for this repo. Global conventions (uv, TDD, path-privacy, docs, no emojis) are in the
 user-level CLAUDE.md and still apply; this file holds only what's specific to this repo.
@@ -56,6 +56,34 @@ build_contact_sheet(grid_rows, out_path, col_labels=[...], row_labels=[...])
 `grid_rows` is a 2D list (rows x cols) of image path / `PIL.Image` / `None`; missing cells render as a
 placeholder instead of crashing. It depends only on Pillow + stdlib. Tests: `tests/test_image_grid.py`.
 
+## Building generation graphs — reuse the built workflows, don't re-inline
+
+NEVER hand-inline a graph dict, and NEVER copy an older harness's `graph()` as a template — a re-inlined copy
+silently drifts from the *measured* recipe (this has bitten us: soft renders, a stale `ModelSamplingFlux`, the
+wrong scheduler). Two already-built sources, both no-`ModelSamplingFlux`:
+
+- **The A/B/C/D recipes are THE source of truth**, built in `scripts/canonical_workflows.py` (now TRACKED):
+  `A` (drop-in), `B` (cfg-headroom), `C` (the two-sampler Turbo-LoRA split), `D` (SDE finish), plus
+  `build_single` / `build_split`. They encode the canonical decision — the **modular `SamplerCustomAdvanced`
+  stack, `beta57` scheduler, bf16 qwen3vl encoder, fp8 RAW DiT, krea2RealVae** (filenames single-sourced from
+  `generate.py`). Call A/B/C/D for ANY canonical render (internal or public; `use_res=False` for a fixed 1024²
+  latent — `Krea2Resolution` needs a ComfyUI restart to load).
+- **`scripts/generate.py` is the low-level layer beneath** the recipes: `build_graph` (single-`KSampler`
+  primitive), `run`, `resolve_vae`, `model_node`, the model-filename constants — and `build_split_graph`, a
+  low-level two-stage split primitive (two `KSamplerAdvanced`, `scheduler=simple`) for harnesses that wire their
+  own conditioning, NOT the canonical workflow C. Documented in `docs/krea2_inference.md`.
+
+Traps a re-inline (or copying an older harness's `graph()`) gets wrong:
+- **No `ModelSamplingFlux`** — the 1.15 flow-shift is in Krea2's model config, so the node is a pixel-identical
+  no-op; it must NOT be in the graph.
+- **VAE = krea2RealVae** (crisper skin/texture), never hardcode stock `qwen_image_vae` (`resolve_vae` falls back
+  automatically when it's absent).
+- **Scheduler `beta57`** in the canonical stack (not `simple`); a real (empty) negative, never
+  `ConditioningZeroOut`.
+
+For training data or any quality-sensitive render use the split (`C`) or the Turbo-LoRA dial — not bare RAW-28 +
+stock VAE.
+
 ## Workflows — every run saves its graph; promote to public deliberately
 
 ComfyUI graphs here are built in code (`internal/scripts/*.py` harnesses) and POSTed to the server — the
@@ -97,6 +125,11 @@ one, don't mix:
 
 - `internal/` is gitignored — experiment scripts, pre-registrations, training notes, session logs, and any
   local/home paths live there (never in committed files).
+- **The whole training pipeline lives in `internal/training/`, together** — data generation
+  (`gen_*_train_set.py`), the train runner (`run_*.sh`), the validate/eval harness, and the `*_prereg.md`.
+  Training code/config always goes here; don't scatter it into `internal/scripts/`. The image *set* goes in
+  `data/train_data/<name>/` and stays **images-only** (the DreamBooth trainer globs it) — document the set in
+  `data/train_data/README.md`, never inside the set dir.
 - LoRA training is GPU-gated: a 12B NF4 QLoRA run needs most of a 24GB card, so ComfyUI must be stopped
   first. Training-free inference (untwisting-RoPE) runs *inside* ComfyUI instead — opposite GPU needs.
 - Pre-register predictions before a run (see `internal/training/*_prereg.md`) so grids are interpretable.

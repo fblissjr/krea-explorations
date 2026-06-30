@@ -28,7 +28,7 @@ from pathlib import Path
 # import these instead of re-hardcoding the strings.
 DEFAULT_UNET = "krea2_turbo_fp8_scaled.safetensors"
 DEFAULT_RAW_UNET = "krea2_raw_fp8_scaled.safetensors"
-DEFAULT_CLIP = "qwen3vl_4b_fp8_scaled.safetensors"
+DEFAULT_CLIP = "qwen3vl_4b_bf16.safetensors"  # bf16 encoder: faithful conditioning (this repo measures it), ~free VRAM (it's offloaded before the DiT sampling pass). The DiT stays fp8 -- 12B bf16 won't fit a 24GB card.
 # krea2RealVae = the community detail VAE (spacepxl's upscale2x decoder, sub-pixel head averaged to 3ch so it
 # drops in via the stock VAELoader). Crisper skin/texture than the stock qwen_image_vae; STOCK_VAE is the fallback.
 DEFAULT_VAE = "krea2RealVae_v10.safetensors"

@@ -65,7 +65,7 @@ Krea 2's stock VAE (`qwen_image_vae`) is tuned for legible text, not photoreal t
 
 ## The canonical workflows
 
-Four reference recipes, named A to D, cover the common cases. All use the modular graph and the Turbo LoRA on a RAW checkpoint rather than a separate Turbo checkpoint.
+Four reference recipes, named A to D, cover the common cases. All use the modular graph and the Turbo LoRA on a RAW checkpoint rather than a separate Turbo checkpoint. They are built in `scripts/canonical_workflows.py` (`A`/`B`/`C`/`D`, plus `build_single` / `build_split`) on the modular `SamplerCustomAdvanced` stack with the `beta57` scheduler, the bf16 qwen3vl encoder and the krea2RealVae decoder. Call those for any canonical render; `scripts/generate.py` below is the low-level layer they build on.
 
 Turbo is RAW plus the Turbo LoRA at strength 1.0. So the LoRA strength is a continuous dial from RAW behaviour up to full Turbo distillation.
 
@@ -90,7 +90,7 @@ Within any of these the Turbo-LoRA strength is a continuous RAW-to-Turbo dial: l
 | C split | RAW then RAW plus Turbo LoRA 1.0 | CFG 2.5 then off | euler | RAW sets composition, LoRA finishes |
 | D SDE finish | RAW plus Turbo LoRA 0.8 | BasicGuider, CFG off | dpmpp_2m_sde eta 0.5 | textured, exponential finish |
 
-Workflow C splits the 8-step schedule at step 3: the first stage runs RAW with real CFG to set the composition, the second runs the Turbo LoRA with CFG off to finish, taking the leftover noise from the first stage. `build_split_graph` in `scripts/generate.py` does this handoff with two `KSamplerAdvanced` nodes and start and end step ranges, rather than a `SplitSigmas` node. The other three recipes follow the modular graph described above.
+Workflow C splits the 8-step schedule at step 3: the first stage runs RAW with real CFG to set the composition, the second runs the Turbo LoRA with CFG off to finish, taking the leftover noise from the first stage. The canonical C (`canonical_workflows.C` / `build_split`) does this on one `beta57` schedule with a `SplitSigmas` node feeding two `SamplerCustomAdvanced` stages — the modular graph, like the other three recipes. `scripts/generate.py` also has a `build_split_graph`, but that is a separate low-level two-stage primitive (two `KSamplerAdvanced` nodes with start and end step ranges, `scheduler=simple`) for harnesses that wire their own conditioning; it is not the canonical workflow C.
 
 ## The generate.py helpers
 
@@ -100,7 +100,7 @@ Workflow C splits the 8-step schedule at step 3: the first stage runs RAW with r
 
 The presets fix steps, CFG, the checkpoint and any LoRAs together: `turbo` (Turbo checkpoint, 8 steps, CFG off), `raw` (RAW checkpoint, 28 steps, CFG 5.5) and `turbo_lora` (RAW plus the Turbo LoRA, 8 steps, CFG off — the de-distillation dial). On the command line, `--lora name:strength` adds more LoRAs on top of the preset, so you can stack a style LoRA and a projector edit in one run.
 
-`build_split_graph()` builds the 2-stage split that workflow C uses. The high-noise stage carries the CFG and the negative prompt, because the seed and composition are decided in the high-noise steps. The low-noise stage finishes with CFG off.
+`build_split_graph()` is a low-level two-stage split primitive (two `KSamplerAdvanced` nodes, `scheduler=simple`): the high-noise stage carries the CFG and the negative prompt, because the seed and composition are decided in the high-noise steps, and the low-noise stage finishes with CFG off. It is a building block some harnesses use; the canonical workflow C lives in `scripts/canonical_workflows.py` on the modular stack.
 
 `run()` submits a graph and saves the first image output. It waits for the prompt to report `completed` before it reads the output. This matters because ComfyUI lists a prompt in its history while it is still running, most often during the first render after a restart while the model loads. Reading the output too early returns nothing and looks like a failure. Waiting for `completed` fixed the long-standing cold-start flakiness, so you no longer need a throwaway warm-up render.
 
