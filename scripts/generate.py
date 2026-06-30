@@ -59,10 +59,21 @@ def model_node(class_type, **inputs):
     return patch
 
 
+def cond_node(class_type, **inputs):
+    """A ``cond_patches`` entry: insert ``class_type`` on the positive-conditioning edge, wiring the current
+    conditioning ref into its ``conditioning`` input, and return the new ref. The conditioning-edge mirror of
+    ``model_node`` — concept inject / project-out levers compose here instead of re-inlining the graph."""
+    def patch(g, cond_ref):
+        nid = f"condpatch_{sum(1 for k in g if k.startswith('condpatch_'))}"
+        g[nid] = {"class_type": class_type, "inputs": {"conditioning": cond_ref, **inputs}}
+        return [nid, 0]
+    return patch
+
+
 def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=42,
                 width=1024, height=1024, sampler="euler", scheduler="simple",
                 loras=None, lora=None, lora_strength=1.0,
-                sage=None, model_patches=None, filename_prefix="krea2_gen"):
+                sage=None, model_patches=None, cond_patches=None, filename_prefix="krea2_gen"):
     """Build a ComfyUI API graph for a single Krea 2 txt2img.
 
     Pass ``loras=[(name, strength), ...]`` to chain several LoRAs on the model edge (e.g. a style LoRA + a
@@ -75,6 +86,9 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
 
     Pass ``model_patches=[model_node(...), ...]`` to hang extra levers on the model edge, in order, after
     the LoRA and sage — a harness composes its interpretability nodes here instead of re-inlining the skeleton.
+
+    Pass ``cond_patches=[cond_node(...), ...]`` to wrap the positive conditioning in order (a measured concept
+    inject / project-out) — the conditioning-edge mirror of ``model_patches``; the negative is left untouched.
     """
     g = {"ckpt": {"class_type": "UNETLoader",
                   "inputs": {"unet_name": unet, "weight_dtype": "default"}}}
@@ -97,6 +111,10 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
                  "inputs": {"clip_name": clip, "type": "krea2", "device": "default"}}
     g["vae"] = {"class_type": "VAELoader", "inputs": {"vae_name": vae}}
     g["pos"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": prompt}}
+    # composable levers on the positive-conditioning edge (concept inject/project-out, ...); each is a cond_node(...)
+    pos_ref = ["pos", 0]
+    for patch in cond_patches or []:
+        pos_ref = patch(g, pos_ref)
     g["latent"] = {"class_type": "EmptyLatentImage",
                    "inputs": {"width": width, "height": height, "batch_size": 1}}
     # Always a real (possibly empty) negative, never ConditioningZeroOut. ZeroOut only behaves on the pure
@@ -105,7 +123,7 @@ def build_graph(prompt, *, unet, clip, vae, negative="", steps=8, cfg=1.0, seed=
     # the uncond pass, so this is byte-identical to ZeroOut there (verified) and costs nothing.
     g["neg"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": negative}}
     g["sampler"] = {"class_type": "KSampler",
-                    "inputs": {"model": sampler_model, "positive": ["pos", 0], "negative": ["neg", 0],
+                    "inputs": {"model": sampler_model, "positive": pos_ref, "negative": ["neg", 0],
                                "latent_image": ["latent", 0], "seed": seed, "steps": steps,
                                "cfg": cfg, "sampler_name": sampler, "scheduler": scheduler,
                                "denoise": 1.0}}

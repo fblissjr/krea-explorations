@@ -72,6 +72,11 @@ wrong scheduler). Two already-built sources, both no-`ModelSamplingFlux`:
   primitive), `run`, `resolve_vae`, `model_node`, the model-filename constants — and `build_split_graph`, a
   low-level two-stage split primitive (two `KSamplerAdvanced`, `scheduler=simple`) for harnesses that wire their
   own conditioning, NOT the canonical workflow C. Documented in `docs/krea2_inference.md`.
+- **A custom node composes onto a build_graph seam, it doesn't re-inline.** A harness adding its own node hangs
+  it on one of two seams instead of copying the skeleton: `model_patches=[model_node("Krea2AttnBias", ...)]` for
+  a model-edge lever (attention bias, residual steer, DiT capture), or `cond_patches=[cond_node("Krea2ConceptInject", ...)]`
+  for a positive-conditioning lever (concept inject / project-out). Both keep the canonical skeleton and only add
+  your node; the negative is left untouched.
 
 Traps a re-inline (or copying an older harness's `graph()`) gets wrong:
 - **No `ModelSamplingFlux`** — the 1.15 flow-shift is in Krea2's model config, so the node is a pixel-identical
