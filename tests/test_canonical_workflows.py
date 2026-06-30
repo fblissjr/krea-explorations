@@ -7,8 +7,10 @@ and a `SplitSigmas` two-stage split for C. Pure dict construction -> no torch ne
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from canonical_workflows import A, B, C, D  # noqa: E402
+from canonical_workflows import A, B, C, D, build_split  # noqa: E402
 from generate import DEFAULT_VAE, DEFAULT_CLIP  # noqa: E402
 
 
@@ -55,3 +57,11 @@ def test_A_is_cfg_off_and_B_runs_a_cfg_guider():
 def test_D_is_dpmpp_2m_sde_at_eta_half():
     sde = [v for v in D(use_res=False).values() if v["class_type"] == "SamplerDPMPP_2M_SDE"]
     assert sde and sde[0]["inputs"]["eta"] == 0.5
+
+
+def test_build_split_rejects_a_non_interior_boundary():
+    # parity with generate.build_split_graph: boundary must be a real interior split (0 < boundary < steps),
+    # else a stage silently does ~zero work
+    for bad in (0, 8, 9):
+        with pytest.raises(ValueError):
+            build_split("p", boundary=bad, steps=8, use_res=False)

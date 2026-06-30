@@ -85,3 +85,10 @@ def test_pick_vae_falls_back_to_stock_when_absent():
     assert _pick_vae([DEFAULT_VAE, STOCK_VAE]) == DEFAULT_VAE   # preferred present -> use it
     assert _pick_vae([STOCK_VAE]) == STOCK_VAE                  # preferred absent -> fall back to stock
     assert _pick_vae([]) == STOCK_VAE                          # nothing available -> stock
+
+
+def test_pick_clip_falls_back_to_fp8_when_bf16_absent():
+    from generate import _pick_clip, DEFAULT_CLIP, STOCK_CLIP
+    assert _pick_clip([DEFAULT_CLIP, STOCK_CLIP]) == DEFAULT_CLIP   # bf16 present -> use it
+    assert _pick_clip([STOCK_CLIP]) == STOCK_CLIP                   # bf16 absent -> fall back to fp8
+    assert _pick_clip([]) == STOCK_CLIP                            # nothing available -> fp8

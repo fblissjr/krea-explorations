@@ -25,8 +25,8 @@ from generate import DEFAULT_RAW_UNET, TURBO_LORA, DEFAULT_CLIP, DEFAULT_VAE  # 
 
 RAW = DEFAULT_RAW_UNET   # fp8 DiT (12B bf16 won't fit a 24GB card; fp8 leaves headroom)
 LORA = TURBO_LORA
-CLIP = DEFAULT_CLIP      # bf16 qwen3vl encoder (faithful conditioning; offloaded before the DiT pass)
-VAE = DEFAULT_VAE        # krea2RealVae detail decoder (stock fallback handled at run time by resolve_vae)
+CLIP = DEFAULT_CLIP      # bf16 qwen3vl encoder (preferred; main() falls back to fp8 via resolve_clip at run time)
+VAE = DEFAULT_VAE        # krea2RealVae detail decoder (preferred; main() falls back to stock via resolve_vae at run time)
 BENIGN = "This is a photorealistic photograph of a golden retriever in a sunny park, sharp focus."
 
 KSEL = lambda n: {"class_type": "KSamplerSelect", "inputs": {"sampler_name": n}}
@@ -52,10 +52,15 @@ def _tail(g, sca):
     return g
 
 
+def _base(strength):
+    """RAW UNETLoader + Turbo-LoRA preamble shared by build_single and build_split (strength = the dial)."""
+    return {"ckpt": {"class_type": "UNETLoader", "inputs": {"unet_name": RAW, "weight_dtype": "default"}},
+            "lora": {"class_type": "LoraLoaderModelOnly",
+                     "inputs": {"model": ["ckpt", 0], "lora_name": LORA, "strength_model": strength}}}
+
+
 def build_single(prompt, *, strength, cfg, sampler, seed=42, steps=8, scheduler="beta57", use_res=True):
-    g = {"ckpt": {"class_type": "UNETLoader", "inputs": {"unet_name": RAW, "weight_dtype": "default"}},
-         "lora": {"class_type": "LoraLoaderModelOnly",
-                  "inputs": {"model": ["ckpt", 0], "lora_name": LORA, "strength_model": strength}}}
+    g = _base(strength)
     _common(g, prompt, use_res)
     g["noise"] = {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}}
     g["sigmas"] = {"class_type": "BasicScheduler",
@@ -74,9 +79,9 @@ def build_single(prompt, *, strength, cfg, sampler, seed=42, steps=8, scheduler=
 
 
 def build_split(prompt, *, boundary=3, steps=8, cfg_high=2.5, seed=42, scheduler="beta57", use_res=True):
-    g = {"ckpt": {"class_type": "UNETLoader", "inputs": {"unet_name": RAW, "weight_dtype": "default"}},  # RAW high-noise
-         "lora": {"class_type": "LoraLoaderModelOnly",
-                  "inputs": {"model": ["ckpt", 0], "lora_name": LORA, "strength_model": 1.0}}}            # Turbo finish
+    if not 0 < boundary < steps:  # match build_split_graph's guard: a real interior split, no empty stage
+        raise ValueError(f"boundary must satisfy 0 < boundary < steps; got boundary={boundary}, steps={steps}")
+    g = _base(1.0)  # RAW high-noise -> Turbo (LoRA 1.0) finish
     _common(g, prompt, use_res)
     g["neg"] = {"class_type": "CLIPTextEncode", "inputs": {"clip": ["clip", 0], "text": ""}}
     g["sampler"] = KSEL("euler")
@@ -109,13 +114,17 @@ def reference_workflows():
 
 
 def main():
-    from generate import run
+    from generate import run, resolve_vae, resolve_clip
     from krea2_explorations.image_grid import build_contact_sheet
+    server = "http://127.0.0.1:8188"
+    vae, clip = resolve_vae(server), resolve_clip(server)  # fall back to stock/fp8 if the preferred aren't installed
     out = REPO / "data" / "canonical"; out.mkdir(parents=True, exist_ok=True)
     arms = {"A_turbolora08": A, "B_cfg_headroom": B, "C_split": C, "D_sde_finish": D}
     cells = []
     for lab, fn in arms.items():
         g = fn(BENIGN, use_res=False, seed=42)  # fixed latent: Krea2Resolution needs a restart to load
+        g["clip"]["inputs"]["clip_name"] = clip  # run-time fallback if bf16/krea2RealVae aren't installed
+        g["vae"]["inputs"]["vae_name"] = vae
         ok = run(g, str(out / f"{lab}.png"), harness="canonical", arm=lab, seed=42, prompt=BENIGN)
         print(f"  {lab:16}: {'ok' if ok else 'FAIL'}", flush=True)
         cells.append(out / f"{lab}.png" if ok else None)

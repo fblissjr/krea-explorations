@@ -29,6 +29,7 @@ from pathlib import Path
 DEFAULT_UNET = "krea2_turbo_fp8_scaled.safetensors"
 DEFAULT_RAW_UNET = "krea2_raw_fp8_scaled.safetensors"
 DEFAULT_CLIP = "qwen3vl_4b_bf16.safetensors"  # bf16 encoder: faithful conditioning (this repo measures it), ~free VRAM (it's offloaded before the DiT sampling pass). The DiT stays fp8 -- 12B bf16 won't fit a 24GB card.
+STOCK_CLIP = "qwen3vl_4b_fp8_scaled.safetensors"  # fp8 fallback for resolve_clip (the prior default encoder)
 # krea2RealVae = the community detail VAE (spacepxl's upscale2x decoder, sub-pixel head averaged to 3ch so it
 # drops in via the stock VAELoader). Crisper skin/texture than the stock qwen_image_vae; STOCK_VAE is the fallback.
 DEFAULT_VAE = "krea2RealVae_v10.safetensors"
@@ -249,6 +250,21 @@ def resolve_vae(server, preferred=DEFAULT_VAE, fallback=STOCK_VAE):
         return fallback
 
 
+def _pick_clip(available, preferred=DEFAULT_CLIP, fallback=STOCK_CLIP):
+    """Return `preferred` if it's in the `available` CLIP list, else `fallback`. Mirrors _pick_vae so the bf16
+    encoder default degrades to the fp8 encoder instead of hard-failing CLIPLoader on a bf16-less install."""
+    return preferred if preferred in available else fallback
+
+
+def resolve_clip(server, preferred=DEFAULT_CLIP, fallback=STOCK_CLIP):
+    """Pick `preferred` if the ComfyUI server has it, else `fallback` (the fp8 encoder)."""
+    try:
+        info = json.loads(urllib.request.urlopen(server + "/object_info/CLIPLoader", timeout=10).read())
+        return _pick_clip(info["CLIPLoader"]["input"]["required"]["clip_name"][0], preferred, fallback)
+    except Exception:
+        return fallback
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("prompt", nargs="?", help="prompt text (or use --prompt-file)")
@@ -256,7 +272,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--preset", choices=list(PRESETS), default="turbo")
     ap.add_argument("--unet", default=None, help="checkpoint filename; defaults to the checkpoint for --preset")
-    ap.add_argument("--clip", default=DEFAULT_CLIP)
+    ap.add_argument("--clip", default=None, help="CLIP/encoder filename; default = bf16 if present, else fp8")
     ap.add_argument("--vae", default=None, help="VAE filename; default = krea2RealVae if present, else stock")
     ap.add_argument("--negative", default="")
     ap.add_argument("--steps", type=int, help="override preset steps")
@@ -282,8 +298,9 @@ def main():
     cfg = float(a.cfg if a.cfg is not None else p["cfg"])
     unet = a.unet or p["unet"]                                   # --preset picks its checkpoint unless overridden
     vae = a.vae or resolve_vae(a.server)                         # krea2RealVae if the server has it, else stock
+    clip = a.clip or resolve_clip(a.server)                      # bf16 encoder if the server has it, else fp8
     loras = list(p["loras"]) + [_parse_lora(x) for x in a.lora]  # preset LoRAs first, then any --lora, in order
-    g = build_graph(prompt, unet=unet, clip=a.clip, vae=vae, negative=a.negative,
+    g = build_graph(prompt, unet=unet, clip=clip, vae=vae, negative=a.negative,
                     steps=steps, cfg=cfg, seed=a.seed, width=a.width, height=a.height,
                     sampler=a.sampler, scheduler=a.scheduler,
                     loras=loras, sage=a.sage)

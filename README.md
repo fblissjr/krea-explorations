@@ -1,6 +1,6 @@
 # krea2-explorations
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 A small, dependency-light toolkit to measure and surgically edit how Krea 2 builds its text conditioning — and
 the findings that came out of using it. It reads and rewrites one tensor inside a 26 GB checkpoint in seconds,
@@ -145,7 +145,8 @@ approximation.
 | `cli` | `krea2-proj inspect \| lora \| solo`. |
 | `attention_stats` + `scripts/extract_attention.py` | Pure-numpy summarization helpers, plus a script that loads the Krea 2 CLIP and the DiT's `txtfusion` weights (CPU) and recomputes the 12×12 layer-fusion attention maps (head-averaged, per-head, cross-prompt). |
 | `image_grid` | Reusable labeled contact-sheet builder (`build_contact_sheet`) for comparison figures — rows × cols of image paths / `PIL.Image` / `None` (missing cells become placeholders). |
-| `scripts/generate` | Build and run a Krea 2 graph over the ComfyUI HTTP API. `build_graph` (one-sampler) and `build_split_graph` (two-stage split); `run` waits for `completed` and finds the image output under any node. Picks the krea2RealVae detail decoder when the server has it, with the stock VAE as a fallback. See [`docs/krea2_inference.md`](docs/krea2_inference.md). |
+| `scripts/canonical_workflows` | The blessed **A/B/C/D recipes** and the source of truth for canonical renders: RAW + Turbo-LoRA on the modular `SamplerCustomAdvanced` stack with the `beta57` scheduler, the bf16 encoder and krea2RealVae — `A` (drop-in), `B` (CFG headroom), `C` (two-sampler split), `D` (SDE finish), plus `build_single` / `build_split`. Call these for any quality render; `scripts/generate` is the low-level layer they build on. See [`docs/krea2_inference.md`](docs/krea2_inference.md). |
+| `scripts/generate` | Build and run a Krea 2 graph over the ComfyUI HTTP API. `build_graph` (one-sampler) and `build_split_graph` (a low-level two-stage split primitive); `run` waits for `completed` and finds the image output under any node. `resolve_vae` / `resolve_clip` pick the krea2RealVae decoder + bf16 encoder when the server has them, falling back to the stock VAE / fp8 encoder. See [`docs/krea2_inference.md`](docs/krea2_inference.md). |
 | `scripts/generate.build_split_graph` | Two-sampler split graph: a high-noise model for steps `[0, boundary)` then a low-noise model for the finish, on one shared schedule (leftover-noise handoff). RAW→Turbo gives seed/compositional diversity at near-Turbo speed + clean CFG headroom (not negative control). See [`docs/two_sampler_split.md`](docs/two_sampler_split.md). |
 | `krea2_resolution_node` | A ComfyUI node, **Krea 2 Resolution** (`conditioning/Krea2`), for Krea 2's workable resolutions: ~1MP buckets, or snap any width/height to the nearest /16 (VAE 8× × DiT patch 2×). Outputs width/height for `EmptyLatentImage`. Restart ComfyUI to load it. See [`docs/krea2_inference.md`](docs/krea2_inference.md). |
 | `krea2_untwist_node` (+ `rope_untwist`, `krea2_untwist_attn`) | **Experimental.** A ComfyUI node, **Krea 2 Untwist Style Reference** (`conditioning/Krea2`), for **training-free reference-image style transfer** via untwisting-RoPE shared attention — a separate *positional-axis* lever (the rest of this toolkit edits the *feature/conditioning axis*). Built for Krea 2's real `[32,48,48]` RoPE. v1 uses renoise-to-sigma reference injection (no RF-inversion); style transfer needs a **low `high_scale`** (the high default copies the reference). Restart ComfyUI to load it. |

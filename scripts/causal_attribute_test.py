@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from generate import PRESETS, build_graph, run  # noqa: E402
+from generate import PRESETS, build_graph, run, DEFAULT_CLIP, DEFAULT_VAE  # noqa: E402
 
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
@@ -37,8 +37,8 @@ def main():
     ap.add_argument("--out", default="data/attribute_directions/causal")
     ap.add_argument("--preset", choices=list(PRESETS), default="turbo")
     ap.add_argument("--unet", default="krea2_turbo_fp8_scaled.safetensors")
-    ap.add_argument("--clip", default="qwen3vl_4b_fp8_scaled.safetensors")
-    ap.add_argument("--vae", default="qwen_image_vae.safetensors")
+    ap.add_argument("--clip", default=DEFAULT_CLIP)
+    ap.add_argument("--vae", default=DEFAULT_VAE)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--size", type=int, default=1024)
     ap.add_argument("--server", default="http://127.0.0.1:8188")

@@ -26,12 +26,20 @@ All notable changes to this project are documented here. Format follows
   ("Krea 2 Untwist Style Reference") for training-free reference-image style transfer via untwisting-RoPE
   shared attention, built for Krea2's real `[32,48,48]` RoPE (not the community fork's `[64,64]`). Patches
   the image DiT blocks only (txtfusion untouched); renoise-to-sigma reference injection (no RF-inversion).
+- `scripts/canonical_workflows`: the blessed A/B/C/D recipes (RAW + Turbo-LoRA on the modular
+  `SamplerCustomAdvanced` stack, `beta57`, krea2RealVae) as the tracked source of truth for canonical renders;
+  `generate.py` is the low-level builder + HTTP layer beneath. `resolve_clip` mirrors `resolve_vae` for
+  graceful encoder fallback. A test guards tracked scripts against re-inlined `ModelSamplingFlux` /
+  `ConditioningZeroOut` / stock-VAE drift.
 
 ### Changed
 - `krea2_resolution_node`: expanded the preset list with the common aspect ratios — 16:9/9:16 (1280x720),
   4:3/3:4 (1152x864), 3:2/2:3 (1248x832), 5:4/4:5 (1120x896), 21:9/9:21 (1568x672), each exact, /16, ~1 MP.
   Corrected the mislabeled `1216x832 (3:2)` / `832x1216 (2:3)` buckets (really 19:13, 1.46:1) to their true
   ratio, and added a test asserting every preset's `(a:b)` label matches its actual dimensions within 1%.
+- Default text encoder: `qwen3vl_4b_fp8_scaled` → `qwen3vl_4b_bf16` (`generate.DEFAULT_CLIP`) for faithful
+  conditioning; `resolve_clip` falls back to fp8 when bf16 isn't installed. The DiT stays fp8 (a 12B bf16
+  won't fit a 24 GB card).
 
 ### Findings
 - Interpretability of the layer aggregation: a universal mid-layer attention hub (L20) and a contrastive

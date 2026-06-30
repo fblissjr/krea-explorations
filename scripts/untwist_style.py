@@ -21,7 +21,7 @@ from krea2_explorations.image_grid import build_contact_sheet  # noqa: E402
 
 # reuse the proven API submit/poll helper
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from generate import run, resolve_vae  # noqa: E402
+from generate import run, resolve_vae, resolve_clip  # noqa: E402
 
 PROMPTS = [
     "a portrait of a person",
@@ -76,7 +76,7 @@ def main():
     ap.add_argument("--ref-name", default="weirdguys_ref.png", help="basename LoadImage will use")
     ap.add_argument("--out-dir", default="data/untwist_weirdguys")
     ap.add_argument("--unet", default="krea2_turbo_bf16.safetensors")
-    ap.add_argument("--clip", default="qwen3vl_4b_fp8_scaled.safetensors")
+    ap.add_argument("--clip", default=None, help="CLIP/encoder filename; default = bf16 if present, else fp8")
     ap.add_argument("--vae", default=None, help="VAE filename; default = krea2RealVae if present, else stock")
     ap.add_argument("--low-scales", default="2.0,3.0,4.0", help="comma-separated low_scale sweep")
     ap.add_argument("--high-scale", type=float, default=1.05)
@@ -85,6 +85,7 @@ def main():
     ap.add_argument("--server", default="http://127.0.0.1:8188")
     a = ap.parse_args()
     vae = a.vae or resolve_vae(a.server)  # krea2RealVae if the server has it, else stock
+    clip = a.clip or resolve_clip(a.server)  # bf16 encoder if the server has it, else fp8
 
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -103,11 +104,11 @@ def main():
         for c, col in enumerate(cols):
             untwist = col != "base"
             ls = low_scales[c - 1] if untwist else 0.0
-            g = build_untwist_graph(prompt, ref_image_name=a.ref_name, unet=a.unet, clip=a.clip, vae=vae,
+            g = build_untwist_graph(prompt, ref_image_name=a.ref_name, unet=a.unet, clip=clip, vae=vae,
                                     low_scale=ls, high_scale=a.high_scale, beta=a.beta,
                                     untwist=untwist, seed=a.seed, filename_prefix=f"untw_{r}_{c}")
             dst = out / f"cell_{r}_{c}.png"
-            ok = run(g, dst, server=a.server)
+            ok = run(g, dst, server=a.server, harness="untwist_style", arm=f"{col}_p{r}", seed=a.seed, prompt=prompt)
             print(f"{'ok ' if ok else 'FAIL'} prompt[{r}] {col} -> {dst}")
             row.append(str(dst) if ok else None)
             time.sleep(0.2)
